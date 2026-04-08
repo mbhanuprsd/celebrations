@@ -1,4 +1,4 @@
-# 🎨 Scribbly — Multiplayer Draw & Guess Game
+# 🎨 Pictionary — Multiplayer Draw & Guess Game
 
 A full-stack skribbl.io-style multiplayer drawing game built with **React**, **Material UI**, **Framer Motion**, and **Firebase**. Supports **2–12 players**, real-time canvas sync, animated UI, and a modular architecture ready to add new games.
 
@@ -7,7 +7,7 @@ A full-stack skribbl.io-style multiplayer drawing game built with **React**, **M
 ## 📁 Project Structure
 
 ```
-skribbl-clone/
+celebrations/
 ├── public/
 │   └── index.html
 ├── src/
