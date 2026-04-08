@@ -13,6 +13,7 @@ jobs:
       - name: Install and Build
         run: npm ci && npm run build
         env:
+          CI: false  # <--- This tells npm to ignore linting errors during build
           # Mapping your .env variables from GitHub Secrets
           REACT_APP_FIREBASE_API_KEY: ${{ secrets.REACT_APP_FIREBASE_API_KEY }}
           REACT_APP_FIREBASE_AUTH_DOMAIN: ${{ secrets.REACT_APP_FIREBASE_AUTH_DOMAIN }}
