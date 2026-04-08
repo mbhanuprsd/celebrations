@@ -98,7 +98,7 @@ export function HomeScreen() {
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             lineHeight: 1, mt: 1,
           }}>
-            Scribbly
+            Pictionary
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, fontWeight: 500 }}>
             Draw it. Guess it. Win it! 🎉

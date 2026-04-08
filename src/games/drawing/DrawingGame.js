@@ -129,7 +129,7 @@ export function DrawingGame() {
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             mr: 1, flexShrink: 0,
           }}>
-            Scribbly
+            Pictionary
           </Typography>
 
           {/* Round info */}
