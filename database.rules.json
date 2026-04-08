@@ -1,0 +1,27 @@
+{
+  "rules": {
+    "canvas": {
+      "$roomId": {
+        // Anyone authenticated can read canvas data
+        ".read": "auth != null",
+        // Only write if authenticated
+        ".write": "auth != null"
+      }
+    },
+    "chat": {
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "presence": {
+      "$roomId": {
+        "$userId": {
+          ".read": "auth != null",
+          // Users can only write their own presence
+          ".write": "auth != null && auth.uid == $userId"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Rooms: any authenticated user can read.
+    // Only the host (or members) can write during waiting.
+    // Once playing, players can update their own fields.
+    match /rooms/{roomId} {
+      allow read: if request.auth != null;
+
+      // Create: authenticated user becomes the host
+      allow create: if request.auth != null
+        && request.resource.data.hostId == request.auth.uid;
+
+      // Update: authenticated user in the room
+      allow update: if request.auth != null
+        && (
+          // Host can do anything
+          resource.data.hostId == request.auth.uid
+          ||
+          // Players can update their own score and presence
+          request.auth.uid in resource.data.players
+        );
+
+      // Delete: host only
+      allow delete: if request.auth != null
+        && resource.data.hostId == request.auth.uid;
+    }
+  }
+}
