@@ -47,7 +47,7 @@ export function WordSelector({ roomId, userId, room, onWordSelected }) {
   return (
     <Box sx={{
       position: 'fixed', inset: 0, zIndex: 100,
-      bgcolor: 'rgba(26,26,46,0.85)', backdropFilter: 'blur(8px)',
+      bgcolor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <motion.div
@@ -58,8 +58,8 @@ export function WordSelector({ roomId, userId, room, onWordSelected }) {
       >
         <Paper elevation={0} sx={{
           borderRadius: 5, p: 4, textAlign: 'center', maxWidth: 480, width: '90vw',
-          background: 'linear-gradient(135deg, #fff 0%, #F0F4FF 100%)',
-          border: '3px solid rgba(67,97,238,0.2)',
+          background: '#161b22',
+          border: '1px solid rgba(255,255,255,0.1)',
         }}>
           {isDrawer ? (
             <>

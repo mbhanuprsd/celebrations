@@ -1,248 +1,138 @@
-# 🎨 Pictionary — Multiplayer Draw & Guess Game
+# 🎨🎲 Celebrations — Multiplayer Game Platform
 
-A full-stack skribbl.io-style multiplayer drawing game built with **React**, **Material UI**, **Framer Motion**, and **Firebase**. Supports **2–12 players**, real-time canvas sync, animated UI, and a modular architecture ready to add new games.
+A full-stack multiplayer game platform built with **React**, **Material UI**, **Framer Motion**, and **Firebase**. Currently ships with two games:
+
+| Game | Players | Description |
+|------|---------|-------------|
+| 🎨 **Draw & Guess** | 2–12 | Skribbl.io-style: draw a word, others guess it |
+| 🎲 **Ludo** | 2–4 | Classic race board game — get all 4 pieces home first |
 
 ---
 
 ## 📁 Project Structure
 
 ```
-celebrations/
-├── public/
-│   └── index.html
-├── src/
-│   ├── App.js                          # Root: routes between Home / Lobby / Game
-│   ├── index.js                        # React entry point
-│   │
-│   ├── firebase/
-│   │   ├── config.js                   # 🔑 YOUR Firebase config goes here
-│   │   ├── index.js                    # Firebase app init (Firestore, RTDB, Auth)
-│   │   └── services.js                 # All DB operations (rooms, canvas, chat)
-│   │
-│   ├── context/
-│   │   └── GameContext.js              # Global state: auth, room, chat
-│   │
-│   ├── core/
-│   │   └── GameEngine.js               # Abstract base class + GameRegistry
-│   │
-│   ├── hooks/
-│   │   ├── useCanvas.js                # Drawing + RTDB stroke sync
-│   │   └── useRoom.js                  # Create / join / leave room
-│   │
-│   ├── theme/
-│   │   └── theme.js                    # MUI theme (colors, fonts, components)
-│   │
-│   ├── components/
-│   │   ├── HomeScreen.js               # Landing page: create/join room
-│   │   └── Lobby.js                    # Waiting room with settings
-│   │
-│   └── games/
-│       └── drawing/                    # 🎮 Drawing game module
-│           ├── DrawingGameEngine.js    # Game logic (scores, rounds, hints)
-│           ├── DrawingGame.js          # Main game layout orchestrator
-│           ├── Canvas.js               # Drawing canvas + toolbar + palette
-│           ├── ChatPanel.js            # Chat + guess submission
-│           ├── PlayerListPanel.js      # Sidebar scoreboard
-│           ├── WordSelector.js         # Word choice overlay (drawer)
-│           ├── RoundTimer.js           # Animated countdown bar
-│           ├── RoundEndScreen.js       # Between-round scores overlay
-│           └── FinalScores.js          # End-game podium screen
-│
-├── firebase.json                       # Firebase hosting + DB config
-├── firestore.rules                     # Firestore security rules
-├── database.rules.json                 # Realtime DB security rules
-├── firestore.indexes.json
-└── .firebaserc                         # Your project ID
+src/
+├── App.js                          # Root router (home / lobby / game)
+├── index.js
+├── firebase/
+│   ├── config.js                   # 🔑 Your Firebase config
+│   ├── index.js                    # Firebase init
+│   └── services.js                 # Shared DB ops (rooms, chat, auth)
+├── context/
+│   └── GameContext.js              # Global auth + room + chat state
+├── core/
+│   └── GameEngine.js               # Abstract base + GameRegistry + GAME_META
+├── hooks/
+│   ├── useCanvas.js                # Drawing + RTDB stroke sync
+│   └── useRoom.js                  # Create / join / leave room
+├── theme/
+│   └── theme.js                    # MUI theme
+├── components/
+│   ├── HomeScreen.js               # Landing: game picker + create/join
+│   └── Lobby.js                    # Waiting room (game-aware)
+└── games/
+    ├── drawing/                    # 🎨 Draw & Guess module
+    │   ├── DrawingGameEngine.js
+    │   ├── DrawingGame.js
+    │   ├── Canvas.js
+    │   ├── ChatPanel.js
+    │   ├── PlayerListPanel.js
+    │   ├── WordSelector.js
+    │   ├── RoundTimer.js
+    │   ├── RoundEndScreen.js
+    │   └── FinalScores.js
+    └── ludo/                       # 🎲 Ludo module
+        ├── LudoGameEngine.js       # Extends GameEngine base class
+        ├── ludoConstants.js        # Board layout, paths, coords
+        ├── ludoFirebaseService.js  # All Ludo Firestore operations
+        ├── LudoGame.js             # Main layout + orchestration
+        ├── LudoBoard.js            # SVG board with animated pieces
+        └── LudoDice.js             # Animated 3D-style dice
 ```
 
 ---
 
-## 🚀 Setup & Deployment (Step-by-Step)
+## 🚀 Setup & Deployment
 
-### Step 1 — Create a Firebase Project
+### Step 1 — Firebase Project Setup
 
 1. Go to [https://console.firebase.google.com](https://console.firebase.google.com)
-2. Click **"Add project"** → give it a name → Continue
-3. Enable Google Analytics (optional) → Create project
+2. Create a new project
+3. Enable these services:
+   - **Authentication → Anonymous sign-in**
+   - **Firestore Database** (start in test mode)
+   - **Realtime Database** (start in test mode)
 
-### Step 2 — Enable Firebase Services
+### Step 2 — Add Your Config
 
-In your project console:
-
-**Authentication:**
-- Go to **Build → Authentication → Get started**
-- Click **Sign-in method** tab → Enable **Anonymous** → Save
-
-**Firestore:**
-- Go to **Build → Firestore Database → Create database**
-- Choose **Start in test mode** (we'll add rules later)
-- Pick a region (e.g. `europe-west3`) → Done
-
-**Realtime Database:**
-- Go to **Build → Realtime Database → Create database**
-- Choose **Start in test mode**
-- Pick a region → Done
-
-### Step 3 — Get Your Config
-
-- Go to **Project Settings** (gear icon) → **Your apps**
-- Click **"Add app"** → Web (`</>`)
-- Register app (any nickname) → Copy the `firebaseConfig` object
-
-### Step 4 — Configure the App
-
-Open `src/firebase/config.js` and paste your config:
+Open `src/firebase/config.js` and replace with your project's config:
 
 ```js
 const firebaseConfig = {
   apiKey: "AIza...",
-  authDomain: "my-project.firebaseapp.com",
-  databaseURL: "https://my-project-default-rtdb.firebaseio.com",
-  projectId: "my-project",
-  storageBucket: "my-project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123:web:abc123"
+  authDomain: "your-project.firebaseapp.com",
+  databaseURL: "https://your-project-default-rtdb.firebaseio.com",
+  projectId: "your-project",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "...",
+  appId: "..."
 };
 ```
 
 Also update `.firebaserc`:
 ```json
-{
-  "projects": { "default": "my-project" }
-}
+{ "projects": { "default": "your-project-id" } }
 ```
 
-### Step 5 — Install Dependencies
+### Step 3 — Run Locally
 
 ```bash
 npm install
-```
-
-### Step 6 — Run Locally
-
-```bash
 npm start
-# Opens at http://localhost:3000
 ```
 
-### Step 7 — Deploy to Firebase Hosting
+### Step 4 — Deploy
 
 ```bash
-# Install Firebase CLI (once)
 npm install -g firebase-tools
-
-# Login
 firebase login
-
-# Deploy security rules + hosting
 npm run build
 firebase deploy
 ```
 
-Your game will be live at: `https://YOUR_PROJECT_ID.web.app`
+---
+
+## 🎲 Ludo Rules
+
+- 2–4 players, each assigned a color (Red, Blue, Green, Yellow)
+- Roll the dice on your turn — need a **6** to enter a piece from home base
+- **Rolling 6** gives you an extra turn
+- **Landing on an opponent** sends their piece back to base (safe cells ⭐ are protected)
+- **3 consecutive sixes** forfeits your turn
+- Get all **4 pieces** around the board and into the center to win!
 
 ---
 
-## 🔒 Deploying Security Rules
+## 🧩 Adding a New Game
 
-After testing, deploy the production rules:
-
-```bash
-firebase deploy --only firestore:rules
-firebase deploy --only database
-```
-
----
-
-## 🎮 How to Play
-
-1. **Create a Room** — Enter your name, set max players (2–12), rounds (1–5), and draw time (30–120s)
-2. **Share the Code** — Send the 6-character room code to friends
-3. **Wait in Lobby** — Host clicks "Start Game" when everyone joins
-4. **Drawing Phase** — The drawer picks one of 3 secret words, then draws it
-5. **Guessing Phase** — Others type guesses in the chat; correct guesses score points
-6. **Scoring** — Faster guesses = more points; drawer earns bonus per correct guesser
-7. **Repeat** — Each player draws once per round; after all rounds, final scores shown
+1. **Create engine**: `src/games/mygame/MyGameEngine.js` extending `GameEngine`
+2. **Register it**: Add to `GameRegistry` and `GAME_META` in `src/core/GameEngine.js`
+3. **Add component**: `src/games/mygame/MyGame.js`
+4. **Route it**: Add to `GAME_COMPONENTS` map in `src/App.js`
+5. **Handle in Lobby**: `GAME_ENGINES` map in `src/components/Lobby.js`
 
 ---
 
-## 🧩 Adding a New Game (Extension Guide)
-
-The architecture uses an abstract `GameEngine` class and `GameRegistry`. Adding a game takes 4 steps:
-
-### 1. Create your engine
-
-```js
-// src/games/trivia/TriviaGameEngine.js
-import { GameEngine } from '../../core/GameEngine';
-
-export class TriviaGameEngine extends GameEngine {
-  static get name() { return 'Trivia'; }
-  static get description() { return 'Answer trivia questions!'; }
-  static get defaultSettings() { return { maxPlayers: 12, rounds: 5 }; }
-
-  async onStartGame(playerOrder) {
-    // Your logic here
-  }
-}
-```
-
-### 2. Register it
-
-```js
-// src/core/GameEngine.js
-import { TriviaGameEngine } from '../games/trivia/TriviaGameEngine';
-
-export const GameRegistry = {
-  drawing: DrawingGameEngine,
-  trivia: TriviaGameEngine,   // ← add this
-};
-```
-
-### 3. Build your game component
-
-```js
-// src/games/trivia/TriviaGame.js
-export function TriviaGame() { ... }
-```
-
-### 4. Route to it in App.js
-
-```js
-// Map room.gameType → component
-const GameComponents = { drawing: DrawingGame, trivia: TriviaGame };
-const GameComp = GameComponents[room.gameType] || DrawingGame;
-```
-
----
-
-## ⚙️ Game Settings Reference
-
-| Setting | Default | Range | Description |
-|---------|---------|-------|-------------|
-| `maxPlayers` | 8 | 2–12 | Max players per room |
-| `rounds` | 3 | 1–5 | Rounds per game |
-| `drawTime` | 80s | 30–120s | Seconds per drawing turn |
-
----
-
-## 🏗️ Architecture Notes
+## ⚙️ Architecture
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Frontend | React 18 + MUI v5 | UI components & routing |
-| Animations | Framer Motion | Screen transitions, overlays, micro-interactions |
-| Game State | Firebase Firestore | Room data, players, scores, game phase |
-| Canvas Sync | Firebase Realtime DB | Low-latency stroke streaming |
-| Auth | Firebase Anonymous Auth | Instant join, no signup needed |
-| Hosting | Firebase Hosting | CDN-backed static hosting |
+| UI | React 18 + MUI v5 | Components |
+| Animation | Framer Motion | All transitions & game animations |
+| Game state | Firestore | Room, players, game phase, Ludo state |
+| Canvas/Chat | Realtime DB | Low-latency drawing strokes + chat |
+| Auth | Anonymous Auth | Instant join, no signup |
+| Hosting | Firebase Hosting | CDN deployment |
 
-**Why two databases?**
-- **Firestore** for game state (structured, queryable, consistent)
-- **Realtime Database** for canvas strokes and chat (lower latency, ~50ms vs ~200ms)
-
----
-
-## 📝 License
-
-MIT — use it, extend it, ship it. Have fun! 🎨
+**Ludo state** is stored as a nested `ludoState` object inside the Firestore room document, updated atomically with `updateDoc`. All game logic runs client-side on the active players' browsers — the host's client drives turn management and win detection.

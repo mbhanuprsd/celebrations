@@ -74,7 +74,7 @@ export function RoundEndScreen({ room }) {
           </Box>
 
           {/* Scores */}
-          <Box sx={{ p: 2.5, bgcolor: 'white' }}>
+          <Box sx={{ p: 2.5, bgcolor: '#161b22' }}>
             <Typography variant="body2" fontWeight={700} color="text.secondary" mb={2} textAlign="center">
               CURRENT STANDINGS
             </Typography>

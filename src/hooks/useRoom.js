@@ -6,10 +6,10 @@ import { createRoom, joinRoom, leaveRoom as fbLeaveRoom, resetRoom } from '../fi
 export function useRoom() {
   const { state, setRoomId, leaveRoom: ctxLeave, setLoading, setError, notify } = useGameContext();
 
-  const create = useCallback(async (playerName, settings) => {
+  const create = useCallback(async (playerName, settings, gameType = 'drawing') => {
     setLoading(true);
     try {
-      const roomId = await createRoom(playerName, settings);
+      const roomId = await createRoom(playerName, settings, gameType);
       setRoomId(roomId);
       notify(`Room ${roomId} created!`);
       return roomId;

@@ -7,7 +7,13 @@ import { GameProvider, useGameContext } from './context/GameContext';
 import { HomeScreen } from './components/HomeScreen';
 import { Lobby } from './components/Lobby';
 import { DrawingGame } from './games/drawing/DrawingGame';
+import { LudoGame } from './games/ludo/LudoGame';
 import { Box, CircularProgress } from '@mui/material';
+
+const GAME_COMPONENTS = {
+  drawing: DrawingGame,
+  ludo: LudoGame,
+};
 
 function AppContent() {
   const { state } = useGameContext();
@@ -21,11 +27,12 @@ function AppContent() {
     );
   }
 
-  // Determine which screen to show
   const screen = !roomId ? 'home'
     : !room ? 'home'
     : room.status === 'waiting' ? 'lobby'
     : 'game';
+
+  const GameComp = GAME_COMPONENTS[room?.gameType] || DrawingGame;
 
   return (
     <AnimatePresence mode="wait">
@@ -41,7 +48,7 @@ function AppContent() {
       )}
       {screen === 'game' && (
         <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} style={{ height: '100vh' }}>
-          <DrawingGame />
+          <GameComp />
         </motion.div>
       )}
     </AnimatePresence>
