@@ -1,6 +1,6 @@
-// src/games/ludo/LudoGame.js — Ludo King mobile-first layout
+// src/games/ludo/LudoGame.js — Ludo King mobile-first, no-scroll, 100dvh
 import React, { useCallback, useState } from 'react';
-import { Box, Typography, IconButton, Button, Chip } from '@mui/material';
+import { Box, Typography, IconButton, Button, Chip, Avatar } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import ReplayIcon from '@mui/icons-material/Replay';
@@ -12,7 +12,7 @@ import { LudoDice } from './LudoDice';
 import { rollDice, movePiece, resetLudoGame } from './ludoFirebaseService';
 import { LUDO_COLORS } from './ludoConstants';
 
-// ─── Corner player card (overlaid on board corners) ────────────────────────
+// ─── Corner player badge (overlaid on board) ──────────────────────────────
 function CornerCard({ color, player, isCurrentTurn, isMe, pieces }) {
   const c = LUDO_COLORS[color];
   if (!c) return null;
@@ -21,34 +21,34 @@ function CornerCard({ color, player, isCurrentTurn, isMe, pieces }) {
     <Box sx={{
       bgcolor: 'rgba(13,17,23,0.88)', backdropFilter: 'blur(8px)',
       border: `1.5px solid ${isCurrentTurn ? c.hex : 'rgba(255,255,255,0.1)'}`,
-      borderRadius: 2, px: 1, py: 0.5, minWidth: 70,
+      borderRadius: 2, px: 0.8, py: 0.4, minWidth: 64,
       boxShadow: isCurrentTurn ? `0 0 12px ${c.hex}60` : 'none',
       transition: 'all 0.3s ease',
     }}>
       <Box display="flex" alignItems="center" gap={0.5}>
-        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c.hex, flexShrink: 0,
+        <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: c.hex, flexShrink: 0,
           boxShadow: isCurrentTurn ? `0 0 6px ${c.hex}` : 'none' }} />
-        <Typography sx={{ color: '#e6edf3', fontWeight: 800, fontSize: '0.7rem', lineHeight: 1.2,
-          maxWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Typography sx={{ color: '#e6edf3', fontWeight: 800, fontSize: '0.65rem', lineHeight: 1.2,
+          maxWidth: 52, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {player ? (isMe ? 'You' : player.name) : c.name}
         </Typography>
       </Box>
-      <Box display="flex" gap={0.3} mt={0.4}>
+      <Box display="flex" gap={0.3} mt={0.3}>
         {[0,1,2,3].map(i => {
-          const p = pieces?.[color]?.[i];
+          const p   = pieces?.[color]?.[i];
           const won = p?.step >= 57;
-          const active = p?.step >= 0 && p?.step < 57;
+          const act = p?.step >= 0 && p?.step < 57;
           return (
             <Box key={i} sx={{
-              width: 8, height: 8, borderRadius: '50%',
-              bgcolor: won ? c.hex : active ? c.hex+'70' : 'rgba(255,255,255,0.1)',
+              width: 7, height: 7, borderRadius: '50%',
+              bgcolor: won ? c.hex : act ? c.hex + '70' : 'rgba(255,255,255,0.1)',
               border: `1px solid ${c.hex}80`,
             }} />
           );
         })}
       </Box>
       {wonPieces > 0 && (
-        <Typography sx={{ color: c.hex, fontWeight: 900, fontSize: '0.65rem', mt: 0.3 }}>
+        <Typography sx={{ color: c.hex, fontWeight: 900, fontSize: '0.6rem', mt: 0.25 }}>
           {wonPieces}/4 home
         </Typography>
       )}
@@ -56,28 +56,66 @@ function CornerCard({ color, player, isCurrentTurn, isMe, pieces }) {
   );
 }
 
-// ─── Turn status bar at bottom ─────────────────────────────────────────────
+// ─── Slim turn indicator bar ───────────────────────────────────────────────
 function TurnBar({ currentTurn, isMyTurn, diceRolled, diceValue }) {
   const c = LUDO_COLORS[currentTurn];
   if (!c) return null;
   return (
-    <motion.div key={currentTurn} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+    <motion.div key={currentTurn} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
       <Box sx={{
-        textAlign: 'center', px: 2, py: 0.5,
-        background: `linear-gradient(90deg, transparent, ${c.hex}25, transparent)`,
+        textAlign: 'center', px: 2, py: 0.4,
+        background: `linear-gradient(90deg, transparent, ${c.hex}22, transparent)`,
         borderTop: `1px solid ${c.hex}40`,
       }}>
-        <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: c.hex }}>
+        <Typography sx={{ fontWeight: 800, fontSize: '0.76rem', color: c.hex }}>
           {isMyTurn
-            ? diceRolled ? `You rolled ${diceValue} — tap a piece!` : `Your turn — roll the dice!`
-            : `${c.name}'s turn${diceRolled ? ` (rolled ${diceValue})` : '...'}`}
+            ? diceRolled ? `You rolled ${diceValue} — tap a piece!` : 'Your turn — roll the dice!'
+            : `${c.name}'s turn${diceRolled ? ` (rolled ${diceValue})` : '…'}`}
         </Typography>
       </Box>
     </motion.div>
   );
 }
 
-// ─── Game log drawer (slide up) ────────────────────────────────────────────
+// ─── Horizontal scrollable player chips row ────────────────────────────────
+function PlayerChips({ activePlayers, colorToPlayer, colorToUid, currentTurn, pieces, userId, ls }) {
+  return (
+    <Box sx={{
+      display: 'flex', overflowX: 'auto', gap: 0.6, px: 1.5, py: 0.5,
+      bgcolor: '#161b22', borderBottom: '1px solid rgba(255,255,255,0.08)',
+      flexShrink: 0, scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' },
+    }}>
+      {activePlayers.map(color => {
+        const c        = LUDO_COLORS[color];
+        const player   = colorToPlayer[color];
+        const uid      = colorToUid[color];
+        const isCur    = color === currentTurn;
+        const isMe     = uid === userId;
+        const wonCount = (pieces?.[color] || []).filter(p => p.step >= 57).length;
+        return (
+          <Box key={color} sx={{
+            flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.5,
+            px: 0.8, py: 0.3, borderRadius: '20px',
+            border: `1.5px solid ${isCur ? c?.hex : 'rgba(255,255,255,0.08)'}`,
+            bgcolor: isCur ? `${c?.hex}14` : 'rgba(255,255,255,0.03)',
+            boxShadow: isCur ? `0 0 8px ${c?.hex}30` : 'none',
+          }}>
+            <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: c?.hex, flexShrink: 0,
+              boxShadow: isCur ? `0 0 5px ${c?.hex}` : 'none' }} />
+            <Typography sx={{ fontSize: '0.62rem', fontWeight: 800, color: isCur ? c?.hex : '#8b949e', whiteSpace: 'nowrap' }}>
+              {isMe ? 'You' : (player?.name || c?.name)}
+            </Typography>
+            <Typography sx={{ fontSize: '0.58rem', color: '#484f58', fontWeight: 700 }}>
+              {wonCount > 0 ? `${wonCount}/4` : ''}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+// ─── Game log slide-up drawer ──────────────────────────────────────────────
 function GameLogDrawer({ chat, open, onClose }) {
   return (
     <AnimatePresence>
@@ -88,16 +126,18 @@ function GameLogDrawer({ chat, open, onClose }) {
           style={{
             position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
             background: '#161b22', borderTop: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '16px 16px 0 0', maxHeight: '50vh', display: 'flex', flexDirection: 'column',
+            borderRadius: '16px 16px 0 0', maxHeight: '50vh',
+            display: 'flex', flexDirection: 'column',
           }}
         >
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-            <Typography fontWeight={800} fontSize="0.85rem">🎲 Game Log</Typography>
-            <IconButton size="small" onClick={onClose} sx={{ color: '#8b949e' }}>✕</IconButton>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            px: 2, py: 1.2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <Typography fontWeight={800} fontSize="0.82rem">🎲 Game Log</Typography>
+            <IconButton size="small" onClick={onClose} sx={{ color: '#8b949e', fontSize: '0.8rem' }}>✕</IconButton>
           </Box>
-          <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 1, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
             {(chat || []).filter(m => m.type === 'system').slice(-40).reverse().map(msg => (
-              <Typography key={msg.id} variant="caption" sx={{ color: '#8b949e', fontStyle: 'italic', display: 'block', py: 0.3 }}>
+              <Typography key={msg.id} variant="caption" sx={{ color: '#8b949e', fontStyle: 'italic', display: 'block', py: 0.2 }}>
                 {msg.text}
               </Typography>
             ))}
@@ -111,16 +151,16 @@ function GameLogDrawer({ chat, open, onClose }) {
 // ─── Main LudoGame ─────────────────────────────────────────────────────────
 export function LudoGame() {
   const { state, notify } = useGameContext();
-  const { leave } = useRoom();
+  const { leave }         = useRoom();
   const { room, userId, roomId, isHost, chat } = state;
   const [actionPending, setActionPending] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
+  const [logOpen, setLogOpen]             = useState(false);
 
-  const ls = room?.ludoState;
-  const myColor = ls?.colorMap?.[userId];
-  const isMyTurn = ls?.currentTurn === myColor;
-  const canRoll = isMyTurn && !ls?.diceRolled && !ls?.winner;
-  const colorInfo = LUDO_COLORS[myColor] || LUDO_COLORS.red;
+  const ls         = room?.ludoState;
+  const myColor    = ls?.colorMap?.[userId];
+  const isMyTurn   = ls?.currentTurn === myColor;
+  const canRoll    = isMyTurn && !ls?.diceRolled && !ls?.winner;
+  const colorInfo  = LUDO_COLORS[myColor] || LUDO_COLORS.red;
 
   const handleRoll = useCallback(async () => {
     if (actionPending) return;
@@ -141,57 +181,80 @@ export function LudoGame() {
   if (!room || !ls) return null;
 
   const activePlayers = ls.activeColors || [];
-
-  // Map color → player
   const colorToPlayer = {};
+  const colorToUid    = {};
   Object.entries(ls.colorMap || {}).forEach(([uid, color]) => {
     colorToPlayer[color] = room.players?.[uid];
+    colorToUid[color]    = uid;
   });
-  const colorToUid = {};
-  Object.entries(ls.colorMap || {}).forEach(([uid, color]) => { colorToUid[color] = uid; });
 
   // Corner positions: red=top-left, blue=top-right, green=bottom-right, yellow=bottom-left
   const cornerLayout = [
-    { color: 'red',    corner: { top: 8, left: 8 } },
-    { color: 'blue',   corner: { top: 8, right: 8 } },
-    { color: 'green',  corner: { bottom: 80, right: 8 } },
-    { color: 'yellow', corner: { bottom: 80, left: 8 } },
+    { color: 'red',    corner: { top: 6, left: 6 } },
+    { color: 'blue',   corner: { top: 6, right: 6 } },
+    { color: 'green',  corner: { bottom: 76, right: 6 } },
+    { color: 'yellow', corner: { bottom: 76, left: 6 } },
   ];
 
   return (
     <Box sx={{
-      height: '100vh', display: 'flex', flexDirection: 'column',
-      bgcolor: '#0d1117', position: 'relative', overflow: 'hidden',
+      height: '100dvh',
+      display: 'flex', flexDirection: 'column',
+      bgcolor: '#0d1117', overflow: 'hidden',
     }}>
-      {/* ── Top bar ── */}
+
+      {/* ── Top bar — 38px ── */}
       <Box sx={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        px: 2, py: 1, bgcolor: '#161b22', borderBottom: '1px solid rgba(255,255,255,0.08)',
-        flexShrink: 0,
+        px: 1.5, height: 38,
+        bgcolor: '#161b22', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
       }}>
         <Typography sx={{
-          fontFamily: '"Fredoka One", cursive', fontSize: '1.3rem',
+          fontFamily: '"Fredoka One", cursive', fontSize: '1.1rem',
           background: 'linear-gradient(135deg, #4CC9F0, #F72585)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>Ludo</Typography>
 
-        <Box display="flex" alignItems="center" gap={1}>
-          <Chip label="🎲 Ludo" size="small" sx={{ bgcolor: 'rgba(76,201,240,0.1)', color: '#4CC9F0', border: '1px solid rgba(76,201,240,0.3)', fontWeight: 700, height: 24 }} />
-          <Chip label={roomId} size="small" onClick={() => { navigator.clipboard.writeText(roomId); notify('Copied!'); }}
-            sx={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 2, cursor: 'pointer', height: 24, bgcolor: 'rgba(255,255,255,0.05)', color: '#8b949e' }} />
-          <IconButton size="small" onClick={leave} sx={{ color: '#EF233C', p: 0.5 }}>
-            <ExitToAppIcon fontSize="small" />
+        <Box display="flex" alignItems="center" gap={0.8}>
+          {myColor && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4,
+              bgcolor: colorInfo.hex + '20', border: `1px solid ${colorInfo.hex}50`,
+              borderRadius: 1.5, px: 0.8, py: 0.2 }}>
+              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: colorInfo.hex }} />
+              <Typography sx={{ color: colorInfo.hex, fontWeight: 900, fontSize: '0.6rem' }}>
+                {colorInfo.name.toUpperCase()}
+              </Typography>
+            </Box>
+          )}
+          <Chip label={roomId} size="small"
+            onClick={() => { navigator.clipboard.writeText(roomId); notify('Copied!'); }}
+            sx={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 2, cursor: 'pointer',
+              height: 20, bgcolor: 'rgba(255,255,255,0.05)', color: '#8b949e', fontSize: '0.62rem' }} />
+          <IconButton size="small" onClick={leave} sx={{ color: '#EF233C', p: 0.3 }}>
+            <ExitToAppIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Box>
       </Box>
 
-      {/* ── Board area (fills remaining space) ── */}
-      <Box sx={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', p: 1 }}>
+      {/* ── Player chips strip — ~30px ── */}
+      <PlayerChips
+        activePlayers={activePlayers}
+        colorToPlayer={colorToPlayer}
+        colorToUid={colorToUid}
+        currentTurn={ls.currentTurn}
+        pieces={ls.pieces}
+        userId={userId}
+        ls={ls}
+      />
 
-        {/* Board */}
+      {/* ── Board area — fills remaining space ── */}
+      <Box sx={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', overflow: 'hidden', p: '8px 8px 4px' }}>
         <Box sx={{
-          width: '100%', maxWidth: 'min(calc(100vh - 180px), 520px)',
-          aspectRatio: '1/1', borderRadius: 3, overflow: 'hidden',
+          width: '100%',
+          maxWidth: 'min(calc(100dvh - 170px), 500px)',
+          aspectRatio: '1/1',
+          borderRadius: 3, overflow: 'hidden',
           boxShadow: '0 8px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)',
           position: 'relative',
         }}>
@@ -215,24 +278,27 @@ export function LudoGame() {
         </Box>
       </Box>
 
-      {/* ── Turn status ── */}
+      {/* ── Turn status bar ── */}
       <TurnBar currentTurn={ls.currentTurn} isMyTurn={isMyTurn}
         diceRolled={ls.diceRolled} diceValue={ls.diceValue} />
 
-      {/* ── Bottom controls ── */}
+      {/* ── Bottom controls — compact, 52px ── */}
       <Box sx={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        px: 2, py: 1.5, bgcolor: '#161b22', borderTop: '1px solid rgba(255,255,255,0.08)',
-        gap: 2, flexShrink: 0,
+        px: 1.5, py: '8px',
+        bgcolor: '#161b22', borderTop: '1px solid rgba(255,255,255,0.08)',
+        gap: 1.5, flexShrink: 0,
+        pb: 'max(8px, env(safe-area-inset-bottom))',
       }}>
         {/* Log button */}
         <Button size="small" variant="outlined"
           onClick={() => setLogOpen(true)}
-          sx={{ color: '#8b949e', borderColor: 'rgba(255,255,255,0.1)', minWidth: 0, px: 1.5, py: 0.8, fontSize: '0.75rem' }}>
-          📋 Log
+          sx={{ color: '#8b949e', borderColor: 'rgba(255,255,255,0.1)', minWidth: 0,
+            px: 1.2, py: 0.5, fontSize: '0.7rem', borderRadius: 2 }}>
+          📋
         </Button>
 
-        {/* Dice — center */}
+        {/* Dice — centre */}
         <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
           <LudoDice
             value={ls.diceValue}
@@ -243,26 +309,17 @@ export function LudoGame() {
           />
         </Box>
 
-        {/* My color badge + replay */}
-        <Box display="flex" flexDirection="column" alignItems="flex-end" gap={0.5}>
-          {myColor && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5,
-              bgcolor: colorInfo.hex + '20', border: `1px solid ${colorInfo.hex}50`,
-              borderRadius: 1.5, px: 1, py: 0.3 }}>
-              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: colorInfo.hex }} />
-              <Typography sx={{ color: colorInfo.hex, fontWeight: 900, fontSize: '0.65rem' }}>
-                {colorInfo.name.toUpperCase()}
-              </Typography>
-            </Box>
-          )}
-          {isHost && ls.winner && (
-            <Button size="small" startIcon={<ReplayIcon />}
-              onClick={async () => { await resetLudoGame(roomId); notify('Reset!'); }}
-              sx={{ fontSize: '0.7rem', py: 0.3, px: 1 }}>
-              Again
-            </Button>
-          )}
-        </Box>
+        {/* Reset (host only, after winner) */}
+        {isHost && ls.winner ? (
+          <Button size="small" variant="outlined" startIcon={<ReplayIcon sx={{ fontSize: 14 }} />}
+            onClick={async () => { await resetLudoGame(roomId); notify('Reset!'); }}
+            sx={{ fontSize: '0.68rem', py: 0.5, px: 1.2, borderRadius: 2,
+              borderColor: 'rgba(255,255,255,0.12)', color: '#8b949e' }}>
+            Again
+          </Button>
+        ) : (
+          <Box sx={{ minWidth: 44 }} /> // spacer to keep dice centred
+        )}
       </Box>
 
       {/* ── Game log drawer ── */}
