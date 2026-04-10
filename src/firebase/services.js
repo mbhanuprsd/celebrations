@@ -3,7 +3,7 @@
 
 import {
   doc, collection, setDoc, updateDoc, onSnapshot,
-  serverTimestamp, deleteField, arrayUnion, getDoc
+  serverTimestamp, deleteField, arrayUnion, getDoc, query, where, limit
 } from 'firebase/firestore';
 import {
   ref, set, onValue, off, push, onDisconnect, serverTimestamp as rtServerTimestamp, remove
@@ -26,8 +26,8 @@ export const createRoom = async (hostName, settings = {}, gameType = 'drawing') 
   if (!userId) throw new Error('Not authenticated');
 
   // Build settings based on game type
-  const defaultSettings = gameType === 'ludo'
-    ? { maxPlayers: 4 }
+  const defaultSettings = gameType === 'ludo' ? { maxPlayers: 4 }
+    : gameType === 'snakeladder' ? { maxPlayers: 4 }
     : { maxPlayers: 8, rounds: 3, drawTime: 80, language: 'en' };
 
   const roomData = {
@@ -355,4 +355,40 @@ const WORD_BANK = {
     'robot','spaceship','dragon','wizard','pirate','ninja','superhero','zombie','vampire',
     'astronaut','mermaid','unicorn','phoenix','dinosaur','alien','ghost',
   ]
+};
+
+// ─── Open Rooms Discovery ─────────────────────────────────────────────────
+
+/**
+ * Listen to rooms that are still waiting (not started).
+ * Filters client-side to rooms where host is online via RTDB presence.
+ */
+export const listenOpenRooms = (callback) => {
+  const q = query(
+    collection(db, 'rooms'),
+    where('status', '==', 'waiting'),
+    limit(30)
+  );
+
+  const unsubFirestore = onSnapshot(q, async (snap) => {
+    const rooms = snap.docs.map(d => d.data());
+    // For each room, check RTDB presence of host
+    const checks = await Promise.all(rooms.map(room => {
+      return new Promise(resolve => {
+        if (!room.hostId || !room.id) { resolve(null); return; }
+        const presRef = ref(rtdb, `presence/${room.id}/${room.hostId}`);
+        onValue(presRef, (pSnap) => {
+          const presence = pSnap.val();
+          if (presence?.online === true) {
+            resolve(room);
+          } else {
+            resolve(null);
+          }
+        }, { onlyOnce: true });
+      });
+    }));
+    callback(checks.filter(Boolean));
+  });
+
+  return unsubFirestore;
 };

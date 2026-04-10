@@ -14,9 +14,10 @@ import { useGameContext } from '../context/GameContext';
 import { useRoom } from '../hooks/useRoom';
 import { DrawingGameEngine } from '../games/drawing/DrawingGameEngine';
 import { LudoGameEngine } from '../games/ludo/LudoGameEngine';
+import { SnakeLadderGameEngine } from '../games/snakeladder/SnakeLadderGameEngine';
 import { GAME_META } from '../core/GameEngine';
 
-const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine };
+const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine };
 
 export function Lobby() {
   const { state, notify } = useGameContext();
@@ -44,8 +45,8 @@ export function Lobby() {
     } catch(e) { console.error(e); setStarting(false); }
   };
 
-  const settingChips = gameType === 'ludo'
-    ? [<Chip key="mp" label={`Up to ${room.settings?.maxPlayers} players`} size="small" sx={{ bgcolor: 'rgba(255,209,102,0.1)', color: '#FFD166', border: '1px solid rgba(255,209,102,0.3)', fontWeight: 700, height: 24 }} />]
+  const settingChips = (gameType === 'ludo' || gameType === 'snakeladder')
+    ? [<Chip key="mp" label={`Up to ${room.settings?.maxPlayers} players`} size="small" sx={{ bgcolor: gameType === 'snakeladder' ? 'rgba(6,214,160,0.1)' : 'rgba(255,209,102,0.1)', color: gameType === 'snakeladder' ? '#06D6A0' : '#FFD166', border: '1px solid ' + (gameType === 'snakeladder' ? 'rgba(6,214,160,0.3)' : 'rgba(255,209,102,0.3)'), fontWeight: 700, height: 24 }} />]
     : [
         <Chip key="mp" label={`${players.length}/${room.settings?.maxPlayers} players`} size="small" sx={{ bgcolor: 'rgba(76,201,240,0.1)', color: '#4CC9F0', border: '1px solid rgba(76,201,240,0.3)', fontWeight: 700, height: 24 }} />,
         <Chip key="r" label={`${room.settings?.rounds} rounds`} size="small" sx={{ bgcolor: 'rgba(247,37,133,0.1)', color: '#F72585', border: '1px solid rgba(247,37,133,0.3)', fontWeight: 700, height: 24 }} />,

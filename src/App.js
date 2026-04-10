@@ -8,11 +8,13 @@ import { HomeScreen } from './components/HomeScreen';
 import { Lobby } from './components/Lobby';
 import { DrawingGame } from './games/drawing/DrawingGame';
 import { LudoGame } from './games/ludo/LudoGame';
+import { SnakeLadderGame } from './games/snakeladder/SnakeLadderGame';
 import { Box, CircularProgress } from '@mui/material';
 
 const GAME_COMPONENTS = {
   drawing: DrawingGame,
   ludo: LudoGame,
+  snakeladder: SnakeLadderGame,
 };
 
 function AppContent() {

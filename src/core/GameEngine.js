@@ -18,10 +18,12 @@ export class GameEngine {
 // ─── Game Registry ─────────────────────────────────────────────────────────
 const DrawingGameEngine = () => import('../games/drawing/DrawingGameEngine');
 const LudoGameEngine = () => import('../games/ludo/LudoGameEngine');
+const SnakeLadderGameEngine = () => import('../games/snakeladder/SnakeLadderGameEngine');
 
 export const GameRegistry = {
   drawing: DrawingGameEngine,
   ludo: LudoGameEngine,
+  snakeladder: SnakeLadderGameEngine,
 };
 
 export const GAME_META = {
@@ -37,6 +39,13 @@ export const GAME_META = {
     icon: '🎲',
     description: 'Classic race game — get all 4 pieces home first!',
     minPlayers: 2, maxPlayers: 4,
+    defaultSettings: { maxPlayers: 4 },
+  },
+  snakeladder: {
+    label: 'Snake & Ladder',
+    icon: '🐍',
+    description: 'Race to 100! Climb ladders, dodge snakes!',
+    minPlayers: 2, maxPlayers: 12,
     defaultSettings: { maxPlayers: 4 },
   },
 };
