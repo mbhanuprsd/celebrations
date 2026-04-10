@@ -1,9 +1,9 @@
-// src/games/drawing/DrawingGame.js — mobile-first, big canvas, minimal chat
+// src/games/drawing/DrawingGame.js — mobile-first, big canvas, on-screen keyboard
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { Box, Typography, IconButton, Chip, TextField, Avatar } from '@mui/material';
+import { Box, Typography, IconButton, Chip, Avatar } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
-import SendIcon from '@mui/icons-material/Send';
+import BackspaceIcon from '@mui/icons-material/Backspace';
 
 import { useGameContext } from '../../context/GameContext';
 import { useRoom } from '../../hooks/useRoom';
@@ -12,11 +12,18 @@ import { DrawingCanvas } from './Canvas';
 import { WordSelector } from './WordSelector';
 import { RoundEndScreen } from './RoundEndScreen';
 import { FinalScores } from './FinalScores';
-import { revealHintCharacter, sendChatMessage, submitGuess } from '../../firebase/services';
+import { revealHintCharacter, submitGuess, sendChatMessage } from '../../firebase/services';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 
-// ─── Compact top player strip (~32px tall) ─────────────────────────────────
+// ─── Keyboard layout ─────────────────────────────────────────────────────────
+const KB_ROWS = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['Z','X','C','V','B','N','M','⌫'],
+];
+
+// ─── Compact top player strip (~30px) ────────────────────────────────────────
 function PlayerStrip({ players, currentDrawer, guessedPlayers, userId }) {
   return (
     <Box sx={{
@@ -52,7 +59,7 @@ function PlayerStrip({ players, currentDrawer, guessedPlayers, userId }) {
   );
 }
 
-// ─── Slim timer bar (18px tall) ────────────────────────────────────────────
+// ─── Slim timer bar (18px) ────────────────────────────────────────────────────
 function TimerBar({ totalTime, startTime, onTimeout }) {
   const [timeLeft, setTimeLeft] = React.useState(totalTime);
   const calledRef = useRef(false);
@@ -93,7 +100,7 @@ function TimerBar({ totalTime, startTime, onTimeout }) {
   );
 }
 
-// ─── Slim hint + round bar (26px tall) ─────────────────────────────────────
+// ─── Slim hint + round bar (26px) ────────────────────────────────────────────
 function HintBar({ hint, round, maxRounds }) {
   const hintDisplay = (hint || '').split('').map(c =>
     c === '_' ? '_ ' : c === ' ' ? '  ' : `${c} `
@@ -116,26 +123,34 @@ function HintBar({ hint, round, maxRounds }) {
   );
 }
 
-// ─── Ultra-compact chat strip (last 3 msgs + thin input row) ──────────────
-function ChatStrip({ roomId, userId, playerName, room, chat, isDrawer }) {
-  const [input, setInput] = useState('');
-  const listRef           = useRef(null);
+// ─── On-screen guess keyboard (Drawize-style) ────────────────────────────────
+function GuessKeyboard({ roomId, userId, playerName, room }) {
+  const [typed, setTyped] = useState('');
+  const [flash, setFlash] = useState(null); // 'correct' | 'wrong' | null
   const hasGuessed        = !!room?.guessedPlayers?.[userId];
   const isPlaying         = room?.status === 'playing';
 
-  useEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [chat]);
+  // Reset typed text when the word changes (new round)
+  useEffect(() => { setTyped(''); setFlash(null); }, [room?.currentWord]);
 
-  const send = async (e) => {
-    e?.preventDefault();
-    const text = input.trim();
-    if (!text) return;
-    setInput('');
+  const handleKey = (key) => {
+    if (flash) return;
+    if (key === '⌫') {
+      setTyped(t => t.slice(0, -1));
+    } else {
+      if (typed.length >= 30) return;
+      setTyped(t => t + key);
+    }
+  };
 
-    if (!isDrawer && isPlaying && room?.currentWord && !hasGuessed) {
+  const handleSubmit = async () => {
+    const text = typed.trim();
+    if (!text || flash) return;
+
+    if (!hasGuessed && isPlaying && room?.currentWord) {
       const correct = await submitGuess(roomId, userId, playerName, text, room.currentWord);
       if (correct) {
+        setFlash('correct');
         const startMs  = room.roundStartTime?.seconds ? room.roundStartTime.seconds * 1000 : room.roundStartTime;
         const elapsed  = (Date.now() - startMs) / 1000;
         const timeLeft = Math.max(0, room.settings.drawTime - elapsed);
@@ -144,91 +159,188 @@ function ChatStrip({ roomId, userId, playerName, room, chat, isDrawer }) {
         const nonDrawers  = Object.keys(room.players).filter(id => id !== room.currentDrawer);
         const newGuessers = { ...room.guessedPlayers, [userId]: true };
         if (nonDrawers.every(id => newGuessers[id])) await engine.onAllGuessed(room.currentWord);
+        setTimeout(() => { setFlash(null); setTyped(''); }, 1200);
+      } else {
+        setFlash('wrong');
+        setTimeout(() => { setFlash(null); setTyped(''); }, 600);
       }
     } else {
+      // After guessing correctly — free-chat mode
       await sendChatMessage(roomId, userId, playerName, text, 'chat');
+      setTyped('');
     }
   };
 
-  const recentMessages = (chat || []).slice(-3);
+  // ── Already guessed ──
+  if (hasGuessed) {
+    return (
+      <Box sx={{
+        flexShrink: 0, bgcolor: '#0d1117',
+        borderTop: '1px solid rgba(6,214,160,0.3)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: 44, px: 2,
+      }}>
+        <motion.div animate={{ scale: [1, 1.06, 1] }} transition={{ duration: 1.4, repeat: Infinity }}>
+          <Typography sx={{ color: '#06D6A0', fontWeight: 900, fontSize: '0.88rem', letterSpacing: 0.5 }}>
+            ✅ You got it! Watch the others…
+          </Typography>
+        </motion.div>
+      </Box>
+    );
+  }
+
+  // ── Not in a round yet ──
+  if (!isPlaying) {
+    return (
+      <Box sx={{
+        flexShrink: 0, bgcolor: '#0d1117',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: 44,
+      }}>
+        <Typography sx={{ color: '#8b949e', fontSize: '0.78rem' }}>Waiting for round to start…</Typography>
+      </Box>
+    );
+  }
+
+  const inputBorderColor =
+    flash === 'correct' ? '#06D6A0' :
+    flash === 'wrong'   ? '#EF233C' :
+    'rgba(76,201,240,0.35)';
+
+  const inputBg =
+    flash === 'correct' ? 'rgba(6,214,160,0.13)' :
+    flash === 'wrong'   ? 'rgba(239,35,60,0.10)'  :
+    '#161b22';
+
+  const inputTextColor =
+    flash === 'correct' ? '#06D6A0' :
+    flash === 'wrong'   ? '#EF233C' :
+    '#e6edf3';
 
   return (
-    <Box sx={{ flexShrink: 0, bgcolor: '#161b22', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-      {/* Last 3 messages — max 48px */}
-      <Box
-        ref={listRef}
-        sx={{
-          px: 1.5, pt: 0.4, pb: 0.1,
-          maxHeight: 48, overflowY: 'auto',
-          display: 'flex', flexDirection: 'column', gap: 0.1,
-          scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' },
-        }}
-      >
-        <AnimatePresence initial={false}>
-          {recentMessages.map(msg => (
-            <motion.div key={msg.id} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.12 }}>
-              {msg.type === 'system' ? (
-                <Typography sx={{ color: '#4CC9F0', fontSize: '0.63rem', fontStyle: 'italic', textAlign: 'center', lineHeight: 1.3 }}>
-                  {msg.text}
-                </Typography>
-              ) : msg.type === 'correct' ? (
-                <Typography sx={{ color: '#06D6A0', fontSize: '0.63rem', fontWeight: 700, lineHeight: 1.3 }}>
-                  ✅ {msg.playerName} guessed it!
-                </Typography>
-              ) : (
-                <Typography sx={{ fontSize: '0.65rem', lineHeight: 1.3 }}>
-                  <Box component="span" sx={{ color: msg.userId === userId ? '#4CC9F0' : '#F72585', fontWeight: 800 }}>
-                    {msg.userId === userId ? 'You' : msg.playerName}:{' '}
-                  </Box>
-                  <Box component="span" sx={{ color: '#e6edf3' }}>{msg.text}</Box>
-                </Typography>
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </Box>
+    <Box sx={{
+      flexShrink: 0,
+      bgcolor: '#0d1117',
+      borderTop: '1px solid rgba(255,255,255,0.08)',
+      display: 'flex', flexDirection: 'column',
+      pb: 'max(4px, env(safe-area-inset-bottom))',
+      userSelect: 'none',
+    }}>
 
-      {/* Input row — 32px high */}
-      <Box
-        component="form" onSubmit={send}
-        sx={{ display: 'flex', gap: 0.5, px: 1, pb: 'max(5px, env(safe-area-inset-bottom))', pt: 0.25 }}
-      >
-        <TextField
-          fullWidth size="small" variant="outlined"
-          placeholder={isDrawer && isPlaying ? "You're drawing 🤫" : hasGuessed ? 'Chat freely 🎉' : 'Type your guess…'}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          disabled={isDrawer && isPlaying}
-          inputProps={{ maxLength: 60 }}
+      {/* ── Guess input display ── */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, px: 1.2, pt: 0.7, pb: 0.4 }}>
+        {/* Text display */}
+        <Box sx={{
+          flex: 1, height: 34, px: 1.2,
+          bgcolor: inputBg,
+          border: `2px solid ${inputBorderColor}`,
+          borderRadius: 2,
+          display: 'flex', alignItems: 'center',
+          transition: 'background 0.2s, border-color 0.2s',
+          overflow: 'hidden',
+        }}>
+          <Typography sx={{
+            fontFamily: 'monospace', fontWeight: 700, fontSize: '0.95rem',
+            color: inputTextColor, flexGrow: 1,
+            overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+            letterSpacing: 0.5,
+          }}>
+            {flash === 'correct' ? '✅ Correct!' :
+             flash === 'wrong'   ? '❌ Try again!' :
+             typed ||
+             <Box component="span" sx={{ color: '#3a4048', fontWeight: 400, fontFamily: 'inherit' }}>
+               Type your guess…
+             </Box>
+            }
+          </Typography>
+          {/* Blinking cursor */}
+          {!flash && (
+            <motion.div
+              animate={{ opacity: [1, 0, 1] }}
+              transition={{ duration: 0.9, repeat: Infinity }}
+              style={{ width: 2, height: 16, background: '#4CC9F0', borderRadius: 1, flexShrink: 0, marginLeft: 2 }}
+            />
+          )}
+        </Box>
+
+        {/* Submit / Enter button */}
+        <Box
+          component={motion.div}
+          whileTap={typed.trim() && !flash ? { scale: 0.85 } : {}}
+          onClick={handleSubmit}
           sx={{
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 1.5, fontSize: '0.76rem', bgcolor: '#0d1117', height: 30,
-              '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-            },
-          }}
-        />
-        <IconButton
-          type="submit"
-          disabled={!input.trim() || (isDrawer && isPlaying)}
-          sx={{
-            bgcolor: '#4CC9F0', color: '#0d1117', borderRadius: 1.5,
-            width: 30, height: 30, flexShrink: 0,
-            '&:hover': { bgcolor: '#7ED8F7' },
-            '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.06)', color: '#30363d' },
+            width: 40, height: 34, borderRadius: 2, flexShrink: 0,
+            bgcolor: typed.trim() && !flash ? '#4CC9F0' : 'rgba(255,255,255,0.05)',
+            border: `1px solid ${typed.trim() && !flash ? '#4CC9F0' : 'rgba(255,255,255,0.08)'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: typed.trim() && !flash ? 'pointer' : 'default',
+            transition: 'background 0.15s, border-color 0.15s',
           }}
         >
-          <SendIcon sx={{ fontSize: 14 }} />
-        </IconButton>
+          <Typography sx={{
+            fontSize: '1.1rem', lineHeight: 1,
+            opacity: typed.trim() && !flash ? 1 : 0.25,
+          }}>⏎</Typography>
+        </Box>
+      </Box>
+
+      {/* ── QWERTY keyboard rows ── */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '3px', px: 1, pb: 0.4 }}>
+        {KB_ROWS.map((row, ri) => (
+          <Box key={ri} sx={{ display: 'flex', justifyContent: 'center', gap: '3px' }}>
+            {row.map(key => {
+              const isBackspace = key === '⌫';
+              return (
+                <Box
+                  key={key}
+                  component={motion.div}
+                  whileTap={{ scale: 0.80, y: 1 }}
+                  onClick={() => handleKey(key)}
+                  sx={{
+                    flex: isBackspace ? 1.5 : 1,
+                    maxWidth: isBackspace ? 54 : 40,
+                    minWidth: isBackspace ? 36 : 26,
+                    height: 33,
+                    bgcolor: isBackspace
+                      ? 'rgba(239,35,60,0.10)'
+                      : 'rgba(255,255,255,0.07)',
+                    border: `1px solid ${isBackspace
+                      ? 'rgba(239,35,60,0.22)'
+                      : 'rgba(255,255,255,0.09)'}`,
+                    borderRadius: '6px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'background 0.1s',
+                    WebkitTapHighlightColor: 'transparent',
+                    '&:active': {
+                      bgcolor: isBackspace
+                        ? 'rgba(239,35,60,0.28)'
+                        : 'rgba(76,201,240,0.25)',
+                    },
+                  }}
+                >
+                  {isBackspace
+                    ? <BackspaceIcon sx={{ fontSize: 14, color: '#EF233C' }} />
+                    : <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#d0d8e4', lineHeight: 1 }}>
+                        {key}
+                      </Typography>
+                  }
+                </Box>
+              );
+            })}
+          </Box>
+        ))}
       </Box>
     </Box>
   );
 }
 
-// ─── Main DrawingGame ──────────────────────────────────────────────────────
+// ─── Main DrawingGame ─────────────────────────────────────────────────────────
 export function DrawingGame() {
   const { state, notify } = useGameContext();
   const { leave }         = useRoom();
-  const { room, isDrawer, userId, roomId, chat, isHost } = state;
+  const { room, isDrawer, userId, roomId, isHost } = state;
   const engineRef        = useRef(null);
   const timeoutCalledRef = useRef(false);
 
@@ -313,7 +425,7 @@ export function DrawingGame() {
       <PlayerStrip players={players} currentDrawer={room.currentDrawer}
         guessedPlayers={room.guessedPlayers} userId={userId} />
 
-      {/* ── Hint bar — ~26px ── */}
+      {/* ── Hint + round bar — 26px ── */}
       <HintBar hint={room.currentWordHint} round={room.currentRound} maxRounds={room.settings?.rounds} />
 
       {/* ── Timer bar — 18px ── */}
@@ -322,14 +434,20 @@ export function DrawingGame() {
           onTimeout={isHost ? handleTimeout : undefined} />
       )}
 
-      {/* ── Canvas — fills everything remaining ── */}
+      {/* ── Canvas — flex 1, fills remaining space ── */}
       <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
         <DrawingCanvas roomId={roomId} canDraw={isDrawer && isPlaying} word={isDrawer ? room.currentWord : null} />
       </Box>
 
-      {/* ── Chat strip — ~78px (48px msgs + 30px input) ── */}
-      <ChatStrip roomId={roomId} userId={userId} playerName={state.me?.name || ''}
-        room={room} chat={chat} isDrawer={isDrawer} />
+      {/* ── On-screen keyboard — guessers only ── */}
+      {!isDrawer && (
+        <GuessKeyboard
+          roomId={roomId}
+          userId={userId}
+          playerName={state.me?.name || ''}
+          room={room}
+        />
+      )}
 
       {/* ── Overlays ── */}
       <AnimatePresence>
