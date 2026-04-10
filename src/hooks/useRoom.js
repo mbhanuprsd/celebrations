@@ -38,10 +38,11 @@ export function useRoom() {
 
   const leave = useCallback(async () => {
     if (state.roomId && state.userId) {
-      await fbLeaveRoom(state.roomId, state.userId);
+      const playerName = state.me?.name || state.playerName;
+      await fbLeaveRoom(state.roomId, state.userId, playerName);
     }
     ctxLeave();
-  }, [state.roomId, state.userId, ctxLeave]);
+  }, [state.roomId, state.userId, state.me, state.playerName, ctxLeave]);
 
   const reset = useCallback(async () => {
     if (!state.roomId || !state.isHost) return;

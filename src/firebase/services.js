@@ -2,7 +2,7 @@
 // All Firebase operations live here — keeps game logic clean and swappable.
 
 import {
-  doc, collection, setDoc, updateDoc, onSnapshot,
+  doc, collection, setDoc, updateDoc, onSnapshot, deleteDoc,
   serverTimestamp, deleteField, arrayUnion, getDoc, query, where, limit
 } from 'firebase/firestore';
 import {
@@ -28,7 +28,7 @@ export const createRoom = async (hostName, settings = {}, gameType = 'drawing') 
   // Build settings based on game type
   const defaultSettings = gameType === 'ludo' ? { maxPlayers: 4 }
     : gameType === 'snakeladder' ? { maxPlayers: 4 }
-    : { maxPlayers: 8, rounds: 3, drawTime: 80, language: 'en' };
+      : { maxPlayers: 8, rounds: 3, drawTime: 80, language: 'en' };
 
   const roomData = {
     id: roomId,
@@ -91,7 +91,11 @@ export const joinRoom = async (roomId, playerName) => {
   return room;
 };
 
-export const leaveRoom = async (roomId, userId) => {
+export const leaveRoom = async (roomId, userId, playerName) => {
+  // Notify others before removing the player so the name is still resolvable
+  if (playerName) {
+    await sendSystemMessage(roomId, `${playerName} left the game`).catch(() => { });
+  }
   const roomRef = doc(db, 'rooms', roomId);
   await updateDoc(roomRef, {
     [`players.${userId}`]: deleteField()
@@ -139,10 +143,10 @@ export const selectWord = async (roomId, word) => {
 
 export const submitGuess = async (roomId, userId, playerName, guess, currentWord) => {
   const isCorrect = guess.toLowerCase().trim() === currentWord.toLowerCase().trim();
-  
+
   // Add message to chat
   await sendChatMessage(roomId, userId, playerName, guess, isCorrect ? 'correct' : 'chat');
-  
+
   return isCorrect;
 };
 
@@ -164,7 +168,7 @@ export const updateDrawerScore = async (roomId, drawerId, bonus) => {
 export const advanceRound = async (roomId, playerOrder, drawerIndex, currentRound, totalRounds) => {
   const nextDrawerIndex = (drawerIndex + 1) % playerOrder.length;
   const nextRound = nextDrawerIndex === 0 ? currentRound + 1 : currentRound;
-  
+
   if (nextRound > totalRounds) {
     await updateDoc(doc(db, 'rooms', roomId), {
       status: 'finished',
@@ -323,7 +327,7 @@ export const revealHintCharacter = (word, hint) => {
   return newHint.join('');
 };
 
-const AVATAR_COLORS = ['#FF6B6B','#FFD93D','#6BCB77','#4D96FF','#F72585','#7209B7','#3A0CA3','#4361EE','#4CC9F0','#06D6A0'];
+const AVATAR_COLORS = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#F72585', '#7209B7', '#3A0CA3', '#4361EE', '#4CC9F0', '#06D6A0'];
 export const generateAvatar = (name) => {
   const idx = name.charCodeAt(0) % AVATAR_COLORS.length;
   return { color: AVATAR_COLORS[idx], initials: name.slice(0, 2).toUpperCase() };
@@ -334,26 +338,26 @@ export const generateAvatar = (name) => {
 const WORD_BANK = {
   en: [
     // Animals
-    'elephant','dolphin','penguin','giraffe','kangaroo','octopus','butterfly','crocodile',
-    'hamster','peacock','flamingo','jellyfish','porcupine','cheetah','gorilla','platypus',
+    'elephant', 'dolphin', 'penguin', 'giraffe', 'kangaroo', 'octopus', 'butterfly', 'crocodile',
+    'hamster', 'peacock', 'flamingo', 'jellyfish', 'porcupine', 'cheetah', 'gorilla', 'platypus',
     // Food
-    'pizza','spaghetti','hamburger','sushi','waffle','croissant','pretzel','burrito',
-    'pancake','donut','cupcake','popcorn','nachos','avocado','pineapple','watermelon',
+    'pizza', 'spaghetti', 'hamburger', 'sushi', 'waffle', 'croissant', 'pretzel', 'burrito',
+    'pancake', 'donut', 'cupcake', 'popcorn', 'nachos', 'avocado', 'pineapple', 'watermelon',
     // Objects
-    'umbrella','telescope','skateboard','microscope','lighthouse','backpack','hammock',
-    'compass','parachute','hourglass','trophy','binoculars','megaphone','lawnmower',
+    'umbrella', 'telescope', 'skateboard', 'microscope', 'lighthouse', 'backpack', 'hammock',
+    'compass', 'parachute', 'hourglass', 'trophy', 'binoculars', 'megaphone', 'lawnmower',
     // Places
-    'library','volcano','pyramid','igloo','stadium','hospital','aquarium','factory',
-    'skyscraper','submarine','treehouse','windmill','greenhouse','cathedral','observatory',
+    'library', 'volcano', 'pyramid', 'igloo', 'stadium', 'hospital', 'aquarium', 'factory',
+    'skyscraper', 'submarine', 'treehouse', 'windmill', 'greenhouse', 'cathedral', 'observatory',
     // Actions
-    'swimming','juggling','skydiving','snowboarding','surfing','climbing','dancing',
-    'painting','knitting','cooking','gardening','cycling','fishing','camping','hiking',
+    'swimming', 'juggling', 'skydiving', 'snowboarding', 'surfing', 'climbing', 'dancing',
+    'painting', 'knitting', 'cooking', 'gardening', 'cycling', 'fishing', 'camping', 'hiking',
     // Abstract
-    'rainbow','thunder','eclipse','tornado','avalanche','tsunami','blizzard','mirage',
-    'gravity','infinity','silence','shadow','reflection','imagination','adventure',
+    'rainbow', 'thunder', 'eclipse', 'tornado', 'avalanche', 'tsunami', 'blizzard', 'mirage',
+    'gravity', 'infinity', 'silence', 'shadow', 'reflection', 'imagination', 'adventure',
     // Pop culture
-    'robot','spaceship','dragon','wizard','pirate','ninja','superhero','zombie','vampire',
-    'astronaut','mermaid','unicorn','phoenix','dinosaur','alien','ghost',
+    'robot', 'spaceship', 'dragon', 'wizard', 'pirate', 'ninja', 'superhero', 'zombie', 'vampire',
+    'astronaut', 'mermaid', 'unicorn', 'phoenix', 'dinosaur', 'alien', 'ghost',
   ]
 };
 
@@ -421,9 +425,51 @@ export const checkNameAvailable = (name) => {
 
 export const listenOnlineUsers = (callback) => {
   const usersRef = ref(rtdb, 'onlineUsers');
-  onValue(usersRef, (snap) => {
+  const unsubscribe = onValue(usersRef, (snap) => {
     const val = snap.val() || {};
     callback(Object.values(val));
   });
-  return () => off(usersRef);
+  return unsubscribe;
+};
+
+export const listenActiveGames = (callback) => {
+  const q = query(
+    collection(db, 'rooms'),
+    where('status', '==', 'playing'),
+    limit(10)
+  );
+
+  return onSnapshot(q, async (snap) => {
+    const rooms = snap.docs.map(d => d.data());
+
+    const results = await Promise.all(rooms.map(room =>
+      new Promise(resolve => {
+        const playerIds = Object.keys(room.players || {});
+
+        // No players left at all — delete and hide immediately
+        if (playerIds.length === 0) {
+          deleteDoc(doc(db, 'rooms', room.id)).catch(() => { });
+          resolve(null);
+          return;
+        }
+
+        // Check RTDB presence for every player in this room
+        const presenceRef = ref(rtdb, `presence/${room.id}`);
+        onValue(presenceRef, (pSnap) => {
+          const presence = pSnap.val() || {};
+          const anyOnline = playerIds.some(uid => presence[uid]?.online === true);
+
+          if (!anyOnline) {
+            // All players offline / left — delete the room and hide it
+            deleteDoc(doc(db, 'rooms', room.id)).catch(() => { });
+            resolve(null);
+          } else {
+            resolve(room);
+          }
+        }, { onlyOnce: true });
+      })
+    ));
+
+    callback(results.filter(Boolean));
+  });
 };
