@@ -1,21 +1,22 @@
 // src/games/snakeladder/SnakeLadderBoard.js
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { Box } from '@mui/material';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { cellToGrid, SNAKES, LADDERS, PLAYER_COLOR_MAP } from './snakeLadderConstants';
 
-const BOARD_CELLS = 100;
 const COLS = 10;
-const CELL = 58; // px per cell
+const CELL = 58;
 const BOARD_PX = CELL * COLS;
 
-// Pastel cell colors for checkerboard feel
-const CELL_COLORS = [
-  '#FFF9F0', '#F0F9FF', '#F0FFF4', '#FFF0F9',
-  '#F9F0FF', '#FFFFF0', '#F0F5FF', '#FFF5F0',
-  '#F0FFFF', '#FFF0F0',
-];
+// ─── Dark cell palette (alternating rows) ─────────────────────────────────
+const DARK_CELLS = ['#0e1520', '#111a28'];
+const SNAKE_HEAD_BG  = '#2d0a0a';
+const SNAKE_HEAD_BDR = '#7f1d1d';
+const LADDER_BASE_BG  = '#0a1f0e';
+const LADDER_BASE_BDR = '#14532d';
+const GOAL_BG = '#1a1400';
 
+// ─── Convert board cell number → SVG pixel center ─────────────────────────
 function cellCenter(cell) {
   const { col, row } = cellToGrid(cell);
   return {
@@ -24,217 +25,262 @@ function cellCenter(cell) {
   };
 }
 
-// Draw a curved snake path between two cells
+// ─── Snake path (wavy quadratic bezier) ───────────────────────────────────
 function SnakePath({ from, to, idx }) {
   const start = cellCenter(from);
-  const end = cellCenter(to);
-  const mx = (start.x + end.x) / 2 + (idx % 2 === 0 ? 30 : -30);
-  const my = (start.y + end.y) / 2 + (idx % 2 === 0 ? -20 : 20);
-  const d = `M ${start.x} ${start.y} Q ${mx} ${my} ${end.x} ${end.y}`;
-  const colors = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#3B82F6', '#A855F7', '#EC4899', '#06B6D4'];
-  const color = colors[idx % colors.length];
+  const end   = cellCenter(to);
+  const sign  = idx % 2 === 0 ? 1 : -1;
+  const mid   = { x: (start.x + end.x) / 2 + sign * 36, y: (start.y + end.y) / 2 - sign * 22 };
+
+  const SNAKE_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#a855f7','#ec4899','#06b6d4'];
+  const c = SNAKE_COLORS[idx % SNAKE_COLORS.length];
+
+  const d = `M ${start.x} ${start.y} Q ${mid.x} ${mid.y} ${end.x} ${end.y}`;
   return (
     <g>
-      {/* Shadow */}
-      <path d={d} stroke="#0008" strokeWidth={10} fill="none" strokeLinecap="round" opacity={0.2} />
-      {/* Main snake body */}
-      <path d={d} stroke={color} strokeWidth={9} fill="none" strokeLinecap="round"
-        strokeDasharray="0" opacity={0.9} />
-      <path d={d} stroke="white" strokeWidth={3} fill="none" strokeLinecap="round"
-        strokeDasharray="6 8" opacity={0.6} />
-      {/* Head */}
-      <circle cx={start.x} cy={start.y} r={9} fill={color} stroke="white" strokeWidth={2} />
-      <text x={start.x} y={start.y + 4} textAnchor="middle" fontSize="10" fill="white">🐍</text>
-      {/* Tail */}
-      <circle cx={end.x} cy={end.y} r={5} fill={color} opacity={0.7} />
+      <path d={d} stroke={`${c}44`} strokeWidth={13} fill="none" strokeLinecap="round" />
+      <path d={d} stroke={c} strokeWidth={8} fill="none" strokeLinecap="round" opacity={0.92} />
+      <path d={d} stroke="rgba(255,255,255,0.18)" strokeWidth={2.5} fill="none"
+        strokeLinecap="round" strokeDasharray="5 7" />
+      {/* Head circle */}
+      <circle cx={start.x} cy={start.y} r={10} fill={c} stroke="#fff" strokeWidth={2} />
+      <text x={start.x} y={start.y + 4.5} textAnchor="middle" fontSize="11" dominantBaseline="auto">🐍</text>
+      {/* Tail dot */}
+      <circle cx={end.x} cy={end.y} r={5} fill={c} opacity={0.7} />
     </g>
   );
 }
 
-// Draw a ladder between two cells
+// ─── Ladder path ──────────────────────────────────────────────────────────
 function LadderPath({ from, to, idx }) {
   const bot = cellCenter(from);
   const top = cellCenter(to);
-  const colors = ['#F59E0B', '#10B981', '#6366F1', '#EC4899', '#14B8A6', '#F97316', '#84CC16', '#06B6D4'];
-  const color = colors[idx % colors.length];
+  const LADDER_COLORS = ['#f59e0b','#10b981','#6366f1','#ec4899','#14b8a6','#f97316','#84cc16','#06b6d4'];
+  const c = LADDER_COLORS[idx % LADDER_COLORS.length];
 
-  // Two rails
-  const offset = 7;
   const angle = Math.atan2(top.y - bot.y, top.x - bot.x);
-  const perpX = Math.sin(angle) * offset;
-  const perpY = -Math.cos(angle) * offset;
+  const off = 7;
+  const px = Math.sin(angle) * off;
+  const py = -Math.cos(angle) * off;
 
-  const r1 = { x1: bot.x - perpX, y1: bot.y - perpY, x2: top.x - perpX, y2: top.y - perpY };
-  const r2 = { x1: bot.x + perpX, y1: bot.y + perpY, x2: top.x + perpX, y2: top.y + perpY };
-
-  // Rungs
-  const dist = Math.sqrt((top.x - bot.x) ** 2 + (top.y - bot.y) ** 2);
-  const rungCount = Math.max(2, Math.floor(dist / 24));
-  const rungs = Array.from({ length: rungCount }, (_, i) => {
-    const t = (i + 1) / (rungCount + 1);
+  const r1 = { x1: bot.x - px, y1: bot.y - py, x2: top.x - px, y2: top.y - py };
+  const r2 = { x1: bot.x + px, y1: bot.y + py, x2: top.x + px, y2: top.y + py };
+  const dist = Math.hypot(top.x - bot.x, top.y - bot.y);
+  const n = Math.max(2, Math.floor(dist / 22));
+  const rungs = Array.from({ length: n }, (_, i) => {
+    const t = (i + 1) / (n + 1);
     return {
-      x1: r1.x1 + (r1.x2 - r1.x1) * t,
-      y1: r1.y1 + (r1.y2 - r1.y1) * t,
-      x2: r2.x1 + (r2.x2 - r2.x1) * t,
-      y2: r2.y1 + (r2.y2 - r2.y1) * t,
+      x1: r1.x1 + (r1.x2 - r1.x1) * t, y1: r1.y1 + (r1.y2 - r1.y1) * t,
+      x2: r2.x1 + (r2.x2 - r2.x1) * t, y2: r2.y1 + (r2.y2 - r2.y1) * t,
     };
   });
 
   return (
-    <g opacity={0.85}>
-      {/* Shadow */}
-      <line {...r1} stroke="#0004" strokeWidth={5} strokeLinecap="round" />
-      <line {...r2} stroke="#0004" strokeWidth={5} strokeLinecap="round" />
-      {/* Rails */}
-      <line {...r1} stroke={color} strokeWidth={4} strokeLinecap="round" />
-      <line {...r2} stroke={color} strokeWidth={4} strokeLinecap="round" />
-      {/* Rungs */}
-      {rungs.map((rung, i) => (
-        <line key={i} {...rung} stroke={color} strokeWidth={3} strokeLinecap="round" opacity={0.9} />
-      ))}
-      {/* Base & top markers */}
-      <text x={bot.x} y={bot.y + 4} textAnchor="middle" fontSize="11">🪜</text>
-      <circle cx={top.x} cy={top.y} r={6} fill={color} stroke="white" strokeWidth={1.5} opacity={0.9} />
+    <g opacity={0.9}>
+      <line {...r1} stroke={`${c}44`} strokeWidth={7} strokeLinecap="round" />
+      <line {...r2} stroke={`${c}44`} strokeWidth={7} strokeLinecap="round" />
+      <line {...r1} stroke={c} strokeWidth={4} strokeLinecap="round" />
+      <line {...r2} stroke={c} strokeWidth={4} strokeLinecap="round" />
+      {rungs.map((r, i) => <line key={i} {...r} stroke={c} strokeWidth={3} strokeLinecap="round" />)}
+      <text x={bot.x} y={bot.y + 5} textAnchor="middle" fontSize="11">🪜</text>
+      <circle cx={top.x} cy={top.y} r={6} fill={c} stroke="white" strokeWidth={1.5} />
     </g>
   );
 }
 
-// Player tokens on the board
-function PlayerTokens({ positions, colorMap, room }) {
-  // Group players by position
-  const byCell = useMemo(() => {
+// ─── Animated player token ─────────────────────────────────────────────────
+function PlayerToken({ uid, colorId, visualPos, totalAtCell, indexAtCell, name }) {
+  const color = PLAYER_COLOR_MAP[colorId];
+  if (!color || visualPos < 1) return null;
+
+  const { x, y } = cellCenter(visualPos);
+  const offsetX = totalAtCell > 1 ? (indexAtCell - (totalAtCell - 1) / 2) * 14 : 0;
+  const offsetY = totalAtCell > 2 ? (indexAtCell > 1 ? 9 : -9) : 0;
+
+  return (
+    <motion.g
+      key={uid}
+      animate={{ x: x + offsetX, y: y + offsetY }}
+      initial={false}
+      transition={{ type: 'spring', stiffness: 280, damping: 26, mass: 0.8 }}
+    >
+      {/* Glow */}
+      <circle cx={0} cy={0} r={14} fill={`${color.hex}30`} />
+      {/* Shadow */}
+      <circle cx={1} cy={3} r={11} fill="#0005" />
+      {/* Body */}
+      <circle cx={0} cy={0} r={11} fill={color.hex} stroke="white" strokeWidth={2.5}
+        style={{ filter: `drop-shadow(0 0 5px ${color.hex}99)` }} />
+      {/* Initial */}
+      <text x={0} y={4.5} textAnchor="middle" fontSize="10.5" fill="white"
+        fontWeight="bold" fontFamily="sans-serif">
+        {(name || '?').charAt(0).toUpperCase()}
+      </text>
+    </motion.g>
+  );
+}
+
+// ─── Main board component ──────────────────────────────────────────────────
+export function SnakeLadderBoard({ slState, room }) {
+  const { positions = {}, colorMap = {}, playerOrder = [], lastMoveInfo } = slState || {};
+
+  // localPositions drives all token rendering – animated per-step
+  const [localPositions, setLocalPositions] = useState(() => ({ ...positions }));
+  const animRef = useRef(null);
+  const lastMoveIdRef = useRef(null);
+
+  // Step-by-step animation triggered by lastMoveInfo.moveId change
+  const runAnimation = useCallback(async (info) => {
+    if (!info) return;
+    const { playerId, fromPos, preEffectPos, finalPos, effectType } = info;
+
+    // Cancel any previous animation
+    if (animRef.current) {
+      animRef.current.cancelled = true;
+    }
+    const handle = { cancelled: false };
+    animRef.current = handle;
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    // 1. Step one cell at a time from fromPos → preEffectPos
+    const start = Math.max(0, fromPos);
+    const end   = preEffectPos;
+    const step  = end >= start ? 1 : -1; // normally always positive
+
+    for (let pos = start + step; step > 0 ? pos <= end : pos >= end; pos += step) {
+      if (handle.cancelled) return;
+      setLocalPositions(prev => ({ ...prev, [playerId]: pos }));
+      const delay = Math.abs(end - start) <= 3 ? 220 : 150;
+      await sleep(delay);
+    }
+
+    // 2. If snake or ladder, pause then slide to finalPos
+    if (effectType && preEffectPos !== finalPos) {
+      if (handle.cancelled) return;
+      await sleep(550); // let player see they landed on the head/base
+      if (handle.cancelled) return;
+      setLocalPositions(prev => ({ ...prev, [playerId]: finalPos }));
+    }
+
+    animRef.current = null;
+  }, []);
+
+  // Watch moveId and trigger animation
+  useEffect(() => {
+    if (!lastMoveInfo) return;
+    if (lastMoveInfo.moveId === lastMoveIdRef.current) return;
+    lastMoveIdRef.current = lastMoveInfo.moveId;
+    runAnimation(lastMoveInfo);
+  }, [lastMoveInfo, runAnimation]);
+
+  // Sync localPositions when not animating (e.g. on reset or initial load)
+  useEffect(() => {
+    if (!animRef.current) {
+      setLocalPositions({ ...positions });
+    }
+  }, [positions]);
+
+  // Build cells
+  const cells = useMemo(() => Array.from({ length: 100 }, (_, i) => {
+    const cell = 100 - i;
+    const row  = Math.floor(i / COLS);
+    const col  = row % 2 === 0 ? i % COLS : COLS - 1 - (i % COLS);
+    return { cell, row, col };
+  }), []);
+
+  // Group players by visual position for stacking offsets
+  const tokensByCell = useMemo(() => {
     const map = {};
-    Object.entries(positions || {}).forEach(([uid, pos]) => {
-      if (pos > 0) {
+    playerOrder.forEach(uid => {
+      const pos = localPositions[uid] || 0;
+      if (pos >= 1) {
         if (!map[pos]) map[pos] = [];
         map[pos].push(uid);
       }
     });
     return map;
-  }, [positions]);
-
-  return (
-    <>
-      {Object.entries(byCell).map(([cell, uids]) =>
-        uids.map((uid, i) => {
-          const colorId = colorMap?.[uid];
-          const color = PLAYER_COLOR_MAP[colorId];
-          if (!color) return null;
-          const { x, y } = cellCenter(Number(cell));
-          const total = uids.length;
-          const offsetX = total > 1 ? (i - (total - 1) / 2) * 13 : 0;
-          const offsetY = total > 2 ? (i > 1 ? 8 : -8) : 0;
-          const playerName = room?.players?.[uid]?.name || uid;
-          return (
-            <motion.g key={uid}
-              initial={{ scale: 0, y: -20 }}
-              animate={{ x: x + offsetX, y: y + offsetY, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 18 }}>
-              {/* Shadow */}
-              <circle cx={0} cy={3} r={11} fill="#0004" />
-              {/* Token */}
-              <circle cx={0} cy={0} r={11} fill={color.hex} stroke="white" strokeWidth={2.5} />
-              <text x={0} y={4} textAnchor="middle" fontSize="11" fill="white" fontWeight="bold">
-                {playerName.charAt(0).toUpperCase()}
-              </text>
-            </motion.g>
-          );
-        })
-      )}
-    </>
-  );
-}
-
-export function SnakeLadderBoard({ slState, room, myUserId }) {
-  if (!slState) return null;
-  const { positions = {}, colorMap = {} } = slState;
-
-  // Build cells array (100 → 1 from top-left visually)
-  const cells = useMemo(() => {
-    return Array.from({ length: BOARD_CELLS }, (_, i) => {
-      const cell = BOARD_CELLS - i; // cell 100 at top-left going to 1 at bottom-right
-      const row = Math.floor(i / COLS);
-      const col = row % 2 === 0 ? i % COLS : COLS - 1 - (i % COLS);
-      return { cell, row, col };
-    });
-  }, []);
-
-  const snakeEntries = Object.entries(SNAKES);
-  const ladderEntries = Object.entries(LADDERS);
+  }, [playerOrder, localPositions]);
 
   return (
     <Box sx={{
-      position: 'relative',
-      width: '100%',
-      maxWidth: BOARD_PX,
-      mx: 'auto',
-      borderRadius: 3,
-      overflow: 'hidden',
-      border: '3px solid rgba(255,255,255,0.15)',
-      boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+      width: '100%', maxWidth: BOARD_PX, mx: 'auto',
+      borderRadius: '16px', overflow: 'hidden',
+      border: '2px solid rgba(255,255,255,0.1)',
+      boxShadow: '0 12px 50px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
     }}>
-      <svg
-        viewBox={`0 0 ${BOARD_PX} ${BOARD_PX}`}
-        width="100%"
-        style={{ display: 'block' }}
-      >
-        {/* Board background */}
-        <rect width={BOARD_PX} height={BOARD_PX} fill="#1a2435" />
+      <svg viewBox={`0 0 ${BOARD_PX} ${BOARD_PX}`} width="100%" style={{ display: 'block' }}>
+        {/* Board bg */}
+        <rect width={BOARD_PX} height={BOARD_PX} fill="#08111e" />
 
         {/* Cells */}
         {cells.map(({ cell, row, col }) => {
           const x = col * CELL;
           const y = row * CELL;
-          const isSnakeHead = SNAKES[cell] !== undefined;
-          const isLadderBase = LADDERS[cell] !== undefined;
-          const isLadderTop = Object.values(LADDERS).includes(cell);
-          const isSnakeTail = Object.values(SNAKES).includes(cell);
-          const bgColor = isSnakeHead ? '#FF6B6B22'
-            : isLadderBase ? '#4ADE8022'
-            : CELL_COLORS[(row * COLS + col) % CELL_COLORS.length];
+          const isSnakeHead  = SNAKES[cell]   !== undefined;
+          const isLadderBase = LADDERS[cell]  !== undefined;
+          const isGoal       = cell === 100;
+
+          let bg  = DARK_CELLS[(row + col) % 2];
+          let bdr = 'rgba(255,255,255,0.06)';
+          if (isSnakeHead)  { bg = SNAKE_HEAD_BG;  bdr = SNAKE_HEAD_BDR; }
+          if (isLadderBase) { bg = LADDER_BASE_BG; bdr = LADDER_BASE_BDR; }
+          if (isGoal)       { bg = GOAL_BG; }
+
+          // Number color
+          let numColor = 'rgba(180,210,255,0.55)';
+          if (isSnakeHead)  numColor = '#fca5a5';
+          if (isLadderBase) numColor = '#86efac';
+          if (isGoal)       numColor = '#fcd34d';
 
           return (
             <g key={cell}>
-              <rect x={x} y={y} width={CELL} height={CELL}
-                fill={bgColor}
-                stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
-              {/* Cell number */}
-              <text
-                x={x + CELL / 2} y={y + 14}
-                textAnchor="middle" fontSize="9"
-                fill={isSnakeHead ? '#FF6B6B' : isLadderBase ? '#4ADE80' : 'rgba(255,255,255,0.4)'}
-                fontWeight={isSnakeHead || isLadderBase ? 'bold' : 'normal'}>
+              <rect x={x} y={y} width={CELL} height={CELL} fill={bg} stroke={bdr} strokeWidth={0.8} />
+              {/* Soft inner glow for special cells */}
+              {(isSnakeHead || isLadderBase) && (
+                <rect x={x+1} y={y+1} width={CELL-2} height={CELL-2}
+                  fill="none" stroke={isSnakeHead ? '#ef444422' : '#22c55e22'} strokeWidth={2} rx={2} />
+              )}
+              {/* Number — top-left corner */}
+              <text x={x + 5} y={y + 13} fontSize="9.5" fill={numColor} fontWeight="700"
+                fontFamily="'Roboto Mono', monospace">
                 {cell}
               </text>
-              {/* Special cell icons */}
-              {isSnakeHead && (
-                <text x={x + CELL - 10} y={y + CELL - 6} fontSize="13" opacity={0.5}>🐍</text>
-              )}
-              {isLadderBase && (
-                <text x={x + CELL - 10} y={y + CELL - 6} fontSize="13" opacity={0.5}>🪜</text>
-              )}
-              {cell === 100 && (
+              {/* Goal star */}
+              {isGoal && (
                 <>
-                  <rect x={x} y={y} width={CELL} height={CELL} fill="#FFD70030" />
-                  <text x={x + CELL / 2} y={y + CELL / 2 + 6} textAnchor="middle" fontSize="22">🏆</text>
+                  <rect x={x} y={y} width={CELL} height={CELL} fill="#ffd70018" />
+                  <text x={x + CELL/2} y={y + CELL/2 + 9} textAnchor="middle" fontSize="26">🏆</text>
                 </>
               )}
             </g>
           );
         })}
 
-        {/* Ladders (drawn below snakes) */}
-        {ladderEntries.map(([from, to], i) => (
-          <LadderPath key={`ladder-${from}`} from={Number(from)} to={Number(to)} idx={i} />
+        {/* Ladders (below snakes) */}
+        {Object.entries(LADDERS).map(([from, to], i) => (
+          <LadderPath key={`l-${from}`} from={+from} to={+to} idx={i} />
         ))}
 
-        {/* Snakes (drawn above ladders) */}
-        {snakeEntries.map(([from, to], i) => (
-          <SnakePath key={`snake-${from}`} from={Number(from)} to={Number(to)} idx={i} />
+        {/* Snakes (above ladders) */}
+        {Object.entries(SNAKES).map(([from, to], i) => (
+          <SnakePath key={`s-${from}`} from={+from} to={+to} idx={i} />
         ))}
 
         {/* Player tokens */}
-        <PlayerTokens positions={positions} colorMap={colorMap} room={room} />
+        {Object.entries(tokensByCell).map(([cell, uids]) =>
+          uids.map((uid, idx) => (
+            <PlayerToken
+              key={uid}
+              uid={uid}
+              colorId={colorMap[uid]}
+              visualPos={localPositions[uid] || 0}
+              totalAtCell={uids.length}
+              indexAtCell={idx}
+              name={room?.players?.[uid]?.name || uid}
+            />
+          ))
+        )}
       </svg>
     </Box>
   );
