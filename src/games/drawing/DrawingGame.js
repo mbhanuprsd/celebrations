@@ -21,6 +21,7 @@ const KB_ROWS = [
   ['Q','W','E','R','T','Y','U','I','O','P'],
   ['A','S','D','F','G','H','J','K','L'],
   ['Z','X','C','V','B','N','M','⌫'],
+  ['.', '-', 'SPACE', '.', '➤'],
 ];
 
 // ─── Compact top player strip (~30px) ────────────────────────────────────────
@@ -123,30 +124,29 @@ function HintBar({ hint, round, maxRounds }) {
   );
 }
 
-// ─── On-screen guess keyboard (Drawize-style) ────────────────────────────────
+// ─── On-screen guess keyboard (Blue Drawize-style) ──────────────────────────
 function GuessKeyboard({ roomId, userId, playerName, room }) {
-  const [typed, setTyped] = useState('');
-  const [flash, setFlash] = useState(null); // 'correct' | 'wrong' | null
-  const hasGuessed        = !!room?.guessedPlayers?.[userId];
-  const isPlaying         = room?.status === 'playing';
+  const [typed, setTyped]   = useState('');
+  const [flash, setFlash]   = useState(null); // 'correct' | 'wrong' | null
+  const hasGuessed          = !!room?.guessedPlayers?.[userId];
+  const isPlaying           = room?.status === 'playing';
 
-  // Reset typed text when the word changes (new round)
   useEffect(() => { setTyped(''); setFlash(null); }, [room?.currentWord]);
 
   const handleKey = (key) => {
     if (flash) return;
-    if (key === '⌫') {
-      setTyped(t => t.slice(0, -1));
-    } else {
-      if (typed.length >= 30) return;
-      setTyped(t => t + key);
-    }
+    if (key === '⌫') { setTyped(t => t.slice(0, -1)); return; }
+    if (key === 'SPACE') { if (typed.length < 30) setTyped(t => t + ' '); return; }
+    if (key === '➤') { handleSubmit(); return; }
+    if (key === '.') { if (typed.length < 30) setTyped(t => t + '.'); return; }
+    if (key === '-') { if (typed.length < 30) setTyped(t => t + '-'); return; }
+    if (typed.length >= 30) return;
+    setTyped(t => t + key);
   };
 
   const handleSubmit = async () => {
     const text = typed.trim();
     if (!text || flash) return;
-
     if (!hasGuessed && isPlaying && room?.currentWord) {
       const correct = await submitGuess(roomId, userId, playerName, text, room.currentWord);
       if (correct) {
@@ -165,7 +165,6 @@ function GuessKeyboard({ roomId, userId, playerName, room }) {
         setTimeout(() => { setFlash(null); setTyped(''); }, 600);
       }
     } else {
-      // After guessing correctly — free-chat mode
       await sendChatMessage(roomId, userId, playerName, text, 'chat');
       setTyped('');
     }
@@ -174,158 +173,109 @@ function GuessKeyboard({ roomId, userId, playerName, room }) {
   // ── Already guessed ──
   if (hasGuessed) {
     return (
-      <Box sx={{
-        flexShrink: 0, bgcolor: '#0d1117',
-        borderTop: '1px solid rgba(6,214,160,0.3)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: 44, px: 2,
-      }}>
+      <Box sx={{ flexShrink: 0, background: 'linear-gradient(180deg, #0D47A1, #0a3a82)',
+        borderTop: '2px solid rgba(34,197,94,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', height: 48, px: 2 }}>
         <motion.div animate={{ scale: [1, 1.06, 1] }} transition={{ duration: 1.4, repeat: Infinity }}>
-          <Typography sx={{ color: '#06D6A0', fontWeight: 900, fontSize: '0.88rem', letterSpacing: 0.5 }}>
-            ✅ You got it! Watch the others…
+          <Typography sx={{ color: '#4ade80', fontWeight: 900, fontSize: '0.9rem' }}>
+            ✅ Correct! Watch the others…
           </Typography>
         </motion.div>
       </Box>
     );
   }
 
-  // ── Not in a round yet ──
   if (!isPlaying) {
     return (
-      <Box sx={{
-        flexShrink: 0, bgcolor: '#0d1117',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: 44,
-      }}>
-        <Typography sx={{ color: '#8b949e', fontSize: '0.78rem' }}>Waiting for round to start…</Typography>
+      <Box sx={{ flexShrink: 0, background: 'linear-gradient(180deg, #0D47A1, #0a3a82)',
+        borderTop: '1px solid rgba(255,255,255,0.15)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', height: 48 }}>
+        <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>Waiting for round to start…</Typography>
       </Box>
     );
   }
 
-  const inputBorderColor =
-    flash === 'correct' ? '#06D6A0' :
-    flash === 'wrong'   ? '#EF233C' :
-    'rgba(76,201,240,0.35)';
-
-  const inputBg =
-    flash === 'correct' ? 'rgba(6,214,160,0.13)' :
-    flash === 'wrong'   ? 'rgba(239,35,60,0.10)'  :
-    '#161b22';
-
-  const inputTextColor =
-    flash === 'correct' ? '#06D6A0' :
-    flash === 'wrong'   ? '#EF233C' :
-    '#e6edf3';
+  const flashBorderColor = flash === 'correct' ? '#4ade80' : flash === 'wrong' ? '#f87171' : 'rgba(255,255,255,0.5)';
+  const flashBg          = flash === 'correct' ? 'rgba(74,222,128,0.18)' : flash === 'wrong' ? 'rgba(248,113,113,0.15)' : 'rgba(255,255,255,0.08)';
 
   return (
     <Box sx={{
       flexShrink: 0,
-      bgcolor: '#0d1117',
-      borderTop: '1px solid rgba(255,255,255,0.08)',
+      background: 'linear-gradient(180deg, #1565C0 0%, #0D47A1 100%)',
+      borderTop: '2px solid rgba(255,255,255,0.2)',
       display: 'flex', flexDirection: 'column',
       pb: 'max(4px, env(safe-area-inset-bottom))',
       userSelect: 'none',
     }}>
-
-      {/* ── Guess input display ── */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, px: 1.2, pt: 0.7, pb: 0.4 }}>
-        {/* Text display */}
+      {/* Input row */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, px: 1.2, pt: 0.8, pb: 0.5 }}>
         <Box sx={{
-          flex: 1, height: 34, px: 1.2,
-          bgcolor: inputBg,
-          border: `2px solid ${inputBorderColor}`,
-          borderRadius: 2,
-          display: 'flex', alignItems: 'center',
-          transition: 'background 0.2s, border-color 0.2s',
-          overflow: 'hidden',
+          flex: 1, height: 36, px: 1.4, borderRadius: '10px',
+          bgcolor: flashBg, border: `2px solid ${flashBorderColor}`,
+          display: 'flex', alignItems: 'center', gap: 0.5, transition: 'all 0.18s', overflow: 'hidden',
         }}>
-          <Typography sx={{
-            fontFamily: 'monospace', fontWeight: 700, fontSize: '0.95rem',
-            color: inputTextColor, flexGrow: 1,
-            overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-            letterSpacing: 0.5,
-          }}>
-            {flash === 'correct' ? '✅ Correct!' :
-             flash === 'wrong'   ? '❌ Try again!' :
-             typed ||
-             <Box component="span" sx={{ color: '#3a4048', fontWeight: 400, fontFamily: 'inherit' }}>
-               Type your guess…
-             </Box>
-            }
+          <Typography sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1rem',
+            color: flash === 'correct' ? '#4ade80' : flash === 'wrong' ? '#f87171' : 'white',
+            flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            {flash === 'correct' ? '✅ Correct!' : flash === 'wrong' ? '❌ Try again!' : typed ||
+              <Box component="span" sx={{ color: 'rgba(255,255,255,0.3)', fontFamily: 'inherit', fontWeight: 400 }}>Type your guess…</Box>}
           </Typography>
-          {/* Blinking cursor */}
           {!flash && (
-            <motion.div
-              animate={{ opacity: [1, 0, 1] }}
-              transition={{ duration: 0.9, repeat: Infinity }}
-              style={{ width: 2, height: 16, background: '#4CC9F0', borderRadius: 1, flexShrink: 0, marginLeft: 2 }}
-            />
+            <motion.div animate={{ opacity: [1, 0, 1] }} transition={{ duration: 0.9, repeat: Infinity }}
+              style={{ width: 2, height: 16, background: 'white', borderRadius: 1, flexShrink: 0 }} />
           )}
         </Box>
-
-        {/* Submit / Enter button */}
-        <Box
-          component={motion.div}
-          whileTap={typed.trim() && !flash ? { scale: 0.85 } : {}}
+        <Box component={motion.div} whileTap={typed.trim() && !flash ? { scale: 0.82 } : {}}
           onClick={handleSubmit}
-          sx={{
-            width: 40, height: 34, borderRadius: 2, flexShrink: 0,
-            bgcolor: typed.trim() && !flash ? '#4CC9F0' : 'rgba(255,255,255,0.05)',
-            border: `1px solid ${typed.trim() && !flash ? '#4CC9F0' : 'rgba(255,255,255,0.08)'}`,
+          sx={{ width: 36, height: 36, borderRadius: '10px', flexShrink: 0,
+            bgcolor: typed.trim() && !flash ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)',
+            border: `1.5px solid ${typed.trim() && !flash ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.2)'}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: typed.trim() && !flash ? 'pointer' : 'default',
-            transition: 'background 0.15s, border-color 0.15s',
-          }}
-        >
-          <Typography sx={{
-            fontSize: '1.1rem', lineHeight: 1,
-            opacity: typed.trim() && !flash ? 1 : 0.25,
-          }}>⏎</Typography>
+            cursor: typed.trim() && !flash ? 'pointer' : 'default', transition: 'all 0.15s' }}>
+          <Typography sx={{ fontSize: '1.1rem', opacity: typed.trim() && !flash ? 1 : 0.3 }}>➤</Typography>
         </Box>
       </Box>
 
-      {/* ── QWERTY keyboard rows ── */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '3px', px: 1, pb: 0.4 }}>
+      {/* Keyboard rows */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px', px: '8px', pb: '6px' }}>
         {KB_ROWS.map((row, ri) => (
-          <Box key={ri} sx={{ display: 'flex', justifyContent: 'center', gap: '3px' }}>
+          <Box key={ri} sx={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
             {row.map(key => {
-              const isBackspace = key === '⌫';
+              const isBack  = key === '⌫';
+              const isSend  = key === '➤';
+              const isSpace = key === 'SPACE';
+              const isDot   = key === '.' || key === '-';
               return (
-                <Box
-                  key={key}
-                  component={motion.div}
-                  whileTap={{ scale: 0.80, y: 1 }}
+                <Box key={key} component={motion.div}
+                  whileTap={{ scale: 0.78, y: 1 }}
                   onClick={() => handleKey(key)}
                   sx={{
-                    flex: isBackspace ? 1.5 : 1,
-                    maxWidth: isBackspace ? 54 : 40,
-                    minWidth: isBackspace ? 36 : 26,
-                    height: 33,
-                    bgcolor: isBackspace
-                      ? 'rgba(239,35,60,0.10)'
-                      : 'rgba(255,255,255,0.07)',
-                    border: `1px solid ${isBackspace
-                      ? 'rgba(239,35,60,0.22)'
-                      : 'rgba(255,255,255,0.09)'}`,
-                    borderRadius: '6px',
+                    flex: isSpace ? 4 : isBack ? 1.6 : isSend ? 1.4 : isDot ? 0.9 : 1,
+                    minWidth: isSpace ? 70 : isBack ? 34 : isSend ? 36 : isDot ? 22 : 26,
+                    maxWidth: isSpace ? 200 : isBack ? 52 : isSend ? 52 : isDot ? 38 : 44,
+                    height: 38,
+                    // Blue key styling like screenshot
+                    border: `1.5px solid rgba(255,255,255,${isSend ? '0.85' : isBack ? '0.5' : '0.45'})`,
+                    borderRadius: '7px',
+                    bgcolor: isSend ? 'rgba(255,255,255,0.2)' : isBack ? 'rgba(255,100,100,0.18)' : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     cursor: 'pointer',
-                    transition: 'background 0.1s',
                     WebkitTapHighlightColor: 'transparent',
-                    '&:active': {
-                      bgcolor: isBackspace
-                        ? 'rgba(239,35,60,0.28)'
-                        : 'rgba(76,201,240,0.25)',
-                    },
-                  }}
-                >
-                  {isBackspace
-                    ? <BackspaceIcon sx={{ fontSize: 14, color: '#EF233C' }} />
-                    : <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#d0d8e4', lineHeight: 1 }}>
-                        {key}
-                      </Typography>
-                  }
+                    transition: 'background 0.1s',
+                    '&:active': { bgcolor: isSend ? 'rgba(255,255,255,0.35)' : isBack ? 'rgba(255,100,100,0.35)' : 'rgba(255,255,255,0.2)' },
+                  }}>
+                  {isBack ? (
+                    <Typography sx={{ fontSize: '0.9rem', color: '#fca5a5' }}>⌫</Typography>
+                  ) : isSend ? (
+                    <Typography sx={{ fontSize: '1rem', color: 'white' }}>➤</Typography>
+                  ) : isSpace ? (
+                    <Box sx={{ width: '50%', height: 2, bgcolor: 'rgba(255,255,255,0.6)', borderRadius: 1 }} />
+                  ) : (
+                    <Typography sx={{ fontSize: ri < 3 ? '0.78rem' : '0.72rem', fontWeight: 700,
+                      color: 'rgba(255,255,255,0.92)', lineHeight: 1 }}>
+                      {key}
+                    </Typography>
+                  )}
                 </Box>
               );
             })}
@@ -335,6 +285,7 @@ function GuessKeyboard({ roomId, userId, playerName, room }) {
     </Box>
   );
 }
+
 
 // ─── Main DrawingGame ─────────────────────────────────────────────────────────
 export function DrawingGame() {

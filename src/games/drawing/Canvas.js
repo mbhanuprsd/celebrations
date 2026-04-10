@@ -29,7 +29,9 @@ export function DrawingCanvas({ roomId, canDraw, word }) {
 
       {/* Canvas — fills all available space */}
       <Box sx={{
-        flex: 1, position: 'relative', overflow: 'hidden',
+        position: 'relative', overflow: 'hidden',
+        aspectRatio: '4/3',
+        width: '100%',
         bgcolor: '#FFFFFF',
         borderRadius: { xs: 0, sm: 2 },
         border: canDraw ? '2px solid #4CC9F0' : '1px solid rgba(255,255,255,0.08)',
@@ -38,7 +40,7 @@ export function DrawingCanvas({ roomId, canDraw, word }) {
       }}>
         <canvas
           ref={canvasRef}
-          width={800} height={520}
+          width={800} height={600}
           onMouseDown={onMouseDown} onMouseMove={onMouseMove}
           onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
           onTouchStart={onMouseDown} onTouchMove={onMouseMove} onTouchEnd={onMouseUp}

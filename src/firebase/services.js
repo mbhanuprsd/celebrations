@@ -392,3 +392,38 @@ export const listenOpenRooms = (callback) => {
 
   return unsubFirestore;
 };
+
+// ─── Online Users (for name uniqueness + presence) ─────────────────────────
+
+export const setUserOnline = async (uid, name) => {
+  const userRef = ref(rtdb, `onlineUsers/${uid}`);
+  await set(userRef, { uid, name, since: rtServerTimestamp() });
+  onDisconnect(userRef).remove();
+};
+
+export const removeUserOnline = async (uid) => {
+  await remove(ref(rtdb, `onlineUsers/${uid}`));
+};
+
+/** Returns true if name is free (not taken by another uid) */
+export const checkNameAvailable = (name) => {
+  return new Promise((resolve) => {
+    const usersRef = ref(rtdb, 'onlineUsers');
+    onValue(usersRef, (snap) => {
+      const val = snap.val() || {};
+      const taken = Object.values(val).some(
+        u => u.name?.toLowerCase() === name.toLowerCase()
+      );
+      resolve(!taken);
+    }, { onlyOnce: true });
+  });
+};
+
+export const listenOnlineUsers = (callback) => {
+  const usersRef = ref(rtdb, 'onlineUsers');
+  onValue(usersRef, (snap) => {
+    const val = snap.val() || {};
+    callback(Object.values(val));
+  });
+  return () => off(usersRef);
+};

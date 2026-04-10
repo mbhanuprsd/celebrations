@@ -4,6 +4,7 @@ import { ThemeProvider, CssBaseline } from '@mui/material';
 import { AnimatePresence, motion } from 'framer-motion';
 import { theme } from './theme/theme';
 import { GameProvider, useGameContext } from './context/GameContext';
+import { LoginScreen } from './components/LoginScreen';
 import { HomeScreen } from './components/HomeScreen';
 import { Lobby } from './components/Lobby';
 import { DrawingGame } from './games/drawing/DrawingGame';
@@ -19,13 +20,21 @@ const GAME_COMPONENTS = {
 
 function AppContent() {
   const { state } = useGameContext();
-  const { isAuthReady, roomId, room } = state;
+  const { isAuthReady, isLoggedIn, roomId, room } = state;
 
   if (!isAuthReady) {
     return (
-      <Box sx={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#F0F4FF' }}>
-        <CircularProgress color="primary" />
+      <Box sx={{ height: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#080c12' }}>
+        <CircularProgress sx={{ color: '#4CC9F0' }} />
       </Box>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ height: '100dvh' }}>
+        <LoginScreen />
+      </motion.div>
     );
   }
 
@@ -39,17 +48,17 @@ function AppContent() {
   return (
     <AnimatePresence mode="wait">
       {screen === 'home' && (
-        <motion.div key="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+        <motion.div key="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
           <HomeScreen />
         </motion.div>
       )}
       {screen === 'lobby' && (
-        <motion.div key="lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+        <motion.div key="lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
           <Lobby />
         </motion.div>
       )}
       {screen === 'game' && (
-        <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} style={{ height: '100vh' }}>
+        <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} style={{ height: '100dvh' }}>
           <GameComp />
         </motion.div>
       )}
