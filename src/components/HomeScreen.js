@@ -551,6 +551,9 @@ export function HomeScreen() {
         </AnimatePresence>
 
       </Box>
+      <Typography sx={{ position: 'fixed', bottom: 8, fontSize: '0.65rem', color: '#484f58', zIndex: 1 }}>
+        Made with ❤️ by <a href="https://github.com/mbhanuprsd" target="_blank" rel="noopener noreferrer" style={{ color: '#F72585' }}>Bhanu Merakanapalli</a>
+      </Typography>
     </Box>
   );
 }

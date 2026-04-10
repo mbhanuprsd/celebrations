@@ -20,8 +20,8 @@ import { GAME_META } from '../core/GameEngine';
 const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine };
 
 const GAME_GRADIENTS = {
-  drawing:     'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',
-  ludo:        'linear-gradient(135deg, #FFD166 0%, #EF476F 100%)',
+  drawing: 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',
+  ludo: 'linear-gradient(135deg, #FFD166 0%, #EF476F 100%)',
   snakeladder: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)',
 };
 const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0' };
@@ -35,13 +35,13 @@ export function Lobby() {
 
   if (!room) return null;
 
-  const players    = Object.values(room.players || {});
-  const gameType   = room.gameType || 'drawing';
-  const meta       = GAME_META[gameType] || GAME_META.drawing;
+  const players = Object.values(room.players || {});
+  const gameType = room.gameType || 'drawing';
+  const meta = GAME_META[gameType] || GAME_META.drawing;
   const minPlayers = meta.minPlayers || 2;
-  const canStart   = isHost && players.length >= minPlayers;
-  const glow       = GAME_GLOW[gameType] || '#4CC9F0';
-  const grad       = GAME_GRADIENTS[gameType] || GAME_GRADIENTS.drawing;
+  const canStart = isHost && players.length >= minPlayers;
+  const glow = GAME_GLOW[gameType] || '#4CC9F0';
+  const grad = GAME_GRADIENTS[gameType] || GAME_GRADIENTS.drawing;
 
   const copyCode = () => {
     navigator.clipboard.writeText(room.id);
@@ -76,10 +76,12 @@ export function Lobby() {
       p: { xs: 1.5, sm: 2 }, position: 'relative', overflow: 'hidden',
     }}>
       {/* Bg glow */}
-      <Box sx={{ position: 'fixed', top: '10%', left: '50%', transform: 'translateX(-50%)',
+      <Box sx={{
+        position: 'fixed', top: '10%', left: '50%', transform: 'translateX(-50%)',
         width: 400, height: 400, borderRadius: '50%',
         background: `radial-gradient(circle, ${glow}15 0%, transparent 70%)`,
-        pointerEvents: 'none', zIndex: 0 }} />
+        pointerEvents: 'none', zIndex: 0
+      }} />
 
       <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
@@ -103,11 +105,15 @@ export function Lobby() {
         </Box>
 
         {/* Room code card */}
-        <Card sx={{ mb: 2, bgcolor: 'rgba(14,21,32,0.95)', border: `1px solid ${glow}25`,
-          borderRadius: '20px', boxShadow: `0 8px 40px ${glow}15` }}>
+        <Card sx={{
+          mb: 2, bgcolor: 'rgba(14,21,32,0.95)', border: `1px solid ${glow}25`,
+          borderRadius: '20px', boxShadow: `0 8px 40px ${glow}15`
+        }}>
           <CardContent sx={{ p: { xs: '16px', sm: '20px' } }}>
-            <Typography sx={{ color: '#484f58', fontSize: '0.65rem', fontWeight: 800,
-              letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.2 }}>
+            <Typography sx={{
+              color: '#484f58', fontSize: '0.65rem', fontWeight: 800,
+              letterSpacing: '0.1em', textTransform: 'uppercase', mb: 1.2
+            }}>
               Room Code — Share with friends
             </Typography>
             {/* Code display */}
@@ -151,18 +157,24 @@ export function Lobby() {
         </Card>
 
         {/* Players card */}
-        <Card sx={{ mb: 2, bgcolor: 'rgba(14,21,32,0.95)', border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '20px' }}>
+        <Card sx={{
+          mb: 2, bgcolor: 'rgba(14,21,32,0.95)', border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '20px'
+        }}>
           <CardContent sx={{ p: { xs: '16px', sm: '20px' } }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5}>
-              <Typography sx={{ color: '#484f58', fontSize: '0.65rem', fontWeight: 800,
-                letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              <Typography sx={{
+                color: '#484f58', fontSize: '0.65rem', fontWeight: 800,
+                letterSpacing: '0.1em', textTransform: 'uppercase'
+              }}>
                 Players
               </Typography>
               <Chip label={`${players.length} / ${room.settings?.maxPlayers}`} size="small"
-                sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700,
+                sx={{
+                  height: 20, fontSize: '0.62rem', fontWeight: 700,
                   bgcolor: 'rgba(255,255,255,0.05)', color: '#8b949e',
-                  border: '1px solid rgba(255,255,255,0.08)' }} />
+                  border: '1px solid rgba(255,255,255,0.08)'
+                }} />
             </Box>
             <List dense disablePadding>
               <AnimatePresence>
@@ -214,9 +226,11 @@ export function Lobby() {
               </AnimatePresence>
             </List>
             {players.length < minPlayers && (
-              <Box sx={{ mt: 1, py: 0.8, px: 1.2, borderRadius: '10px',
+              <Box sx={{
+                mt: 1, py: 0.8, px: 1.2, borderRadius: '10px',
                 bgcolor: 'rgba(247,37,133,0.05)', border: '1px solid rgba(247,37,133,0.15)',
-                textAlign: 'center' }}>
+                textAlign: 'center'
+              }}>
                 <Typography sx={{ color: '#F72585', fontSize: '0.73rem', fontWeight: 700 }}>
                   Need at least {minPlayers} players to start
                 </Typography>
@@ -253,13 +267,18 @@ export function Lobby() {
             </Button>
           ) : (
             <Button fullWidth variant="outlined" disabled
-              sx={{ borderRadius: '14px', py: 1.3, borderColor: 'rgba(255,255,255,0.07)',
-                color: '#484f58', fontSize: { xs: '0.85rem', sm: '0.95rem' } }}>
+              sx={{
+                borderRadius: '14px', py: 1.3, borderColor: 'rgba(255,255,255,0.07)',
+                color: '#484f58', fontSize: { xs: '0.85rem', sm: '0.95rem' }
+              }}>
               Waiting for host…
             </Button>
           )}
         </Box>
       </motion.div>
+      <Typography sx={{ position: 'fixed', bottom: 8, fontSize: '0.65rem', color: '#484f58', zIndex: 1 }}>
+        Made with ❤️ by <a href="https://github.com/mbhanuprsd" target="_blank" rel="noopener noreferrer" style={{ color: '#F72585' }}>Bhanu Merakanapalli</a>
+      </Typography>
     </Box>
   );
 }
