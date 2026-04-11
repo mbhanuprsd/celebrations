@@ -10,12 +10,14 @@ import { Lobby } from './components/Lobby';
 import { DrawingGame } from './games/drawing/DrawingGame';
 import { LudoGame } from './games/ludo/LudoGame';
 import { SnakeLadderGame } from './games/snakeladder/SnakeLadderGame';
+import { UnoGame } from './games/uno/UnoGame';
 import { Box, CircularProgress } from '@mui/material';
 
 const GAME_COMPONENTS = {
   drawing: DrawingGame,
   ludo: LudoGame,
   snakeladder: SnakeLadderGame,
+  uno: UnoGame,
 };
 
 function AppContent() {

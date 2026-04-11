@@ -254,8 +254,7 @@ export function LudoGame() {
           width: '100%',
           maxWidth: 'min(calc(100dvh - 170px), 500px)',
           aspectRatio: '1/1',
-          borderRadius: 3, overflow: 'hidden',
-          boxShadow: '0 8px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)',
+          boxShadow: '0 8px 48px rgba(0,0,0,0.6), 0 0 0 2px rgba(255,255,255,0.06)',
           position: 'relative',
         }}>
           <LudoBoard ludoState={ls} userId={userId} onMovePiece={handleMovePiece} />

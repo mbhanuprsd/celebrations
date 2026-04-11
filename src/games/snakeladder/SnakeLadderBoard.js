@@ -36,17 +36,39 @@ function SnakePath({ from, to, idx }) {
   const c = SNAKE_COLORS[idx % SNAKE_COLORS.length];
 
   const d = `M ${start.x} ${start.y} Q ${mid.x} ${mid.y} ${end.x} ${end.y}`;
+
+  // Direction arrow for snake head (points along the path tangent)
+  const dx = start.x - mid.x;
+  const dy = start.y - mid.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = dx / len;
+  const ny = dy / len;
+  const px = -ny; // perpendicular
+  const py = nx;
+  // Diamond / arrowhead rotated to face along the body
+  const H = 11; // half-length
+  const W = 7;  // half-width
+  const tip   = { x: start.x + nx * H,  y: start.y + ny * H };
+  const left  = { x: start.x + px * W - nx * 2, y: start.y + py * W - ny * 2 };
+  const right = { x: start.x - px * W - nx * 2, y: start.y - py * W - ny * 2 };
+  const tail  = { x: start.x - nx * H,  y: start.y - ny * H };
+  const headPath = `M ${tip.x} ${tip.y} L ${left.x} ${left.y} L ${tail.x} ${tail.y} L ${right.x} ${right.y} Z`;
+
   return (
     <g>
+      {/* Body glow + body */}
       <path d={d} stroke={`${c}44`} strokeWidth={13} fill="none" strokeLinecap="round" />
       <path d={d} stroke={c} strokeWidth={8} fill="none" strokeLinecap="round" opacity={0.92} />
       <path d={d} stroke="rgba(255,255,255,0.18)" strokeWidth={2.5} fill="none"
         strokeLinecap="round" strokeDasharray="5 7" />
-      {/* Head circle */}
-      <circle cx={start.x} cy={start.y} r={10} fill={c} stroke="#fff" strokeWidth={2} />
-      <text x={start.x} y={start.y + 4.5} textAnchor="middle" fontSize="11" dominantBaseline="auto">🐍</text>
       {/* Tail dot */}
       <circle cx={end.x} cy={end.y} r={5} fill={c} opacity={0.7} />
+      {/* Head: diamond arrowhead — visually distinct from the circular player pawns */}
+      <path d={headPath} fill={c} stroke="#fff" strokeWidth={1.8} opacity={0.97}
+        style={{ filter: `drop-shadow(0 0 4px ${c})` }} />
+      {/* Eyes: two tiny white dots */}
+      <circle cx={start.x + px * 3.5 + nx * 4} cy={start.y + py * 3.5 + ny * 4} r={1.8} fill="white" />
+      <circle cx={start.x - px * 3.5 + nx * 4} cy={start.y - py * 3.5 + ny * 4} r={1.8} fill="white" />
     </g>
   );
 }
@@ -205,7 +227,6 @@ export function SnakeLadderBoard({ slState, room }) {
   return (
     <Box sx={{
       width: '100%', maxWidth: BOARD_PX, mx: 'auto',
-      borderRadius: '16px', overflow: 'hidden',
       border: '2px solid rgba(255,255,255,0.1)',
       boxShadow: '0 12px 50px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
     }}>

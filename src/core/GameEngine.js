@@ -19,11 +19,13 @@ export class GameEngine {
 const DrawingGameEngine = () => import('../games/drawing/DrawingGameEngine');
 const LudoGameEngine = () => import('../games/ludo/LudoGameEngine');
 const SnakeLadderGameEngine = () => import('../games/snakeladder/SnakeLadderGameEngine');
+const UnoGameEngine = () => import('../games/uno/UnoGameEngine');
 
 export const GameRegistry = {
   drawing: DrawingGameEngine,
   ludo: LudoGameEngine,
   snakeladder: SnakeLadderGameEngine,
+  uno: UnoGameEngine,
 };
 
 export const GAME_META = {
@@ -47,6 +49,13 @@ export const GAME_META = {
     description: 'Race to 100! Climb ladders, dodge snakes!',
     minPlayers: 2, maxPlayers: 12,
     defaultSettings: { maxPlayers: 4 },
+  },
+  uno: {
+    label: 'UNO',
+    icon: '🃏',
+    description: 'Match colors and numbers — empty your hand first!',
+    minPlayers: 2, maxPlayers: 10,
+    defaultSettings: { maxPlayers: 6 },
   },
 };
 

@@ -15,9 +15,10 @@ import { useRoom } from '../hooks/useRoom';
 import { DrawingGameEngine } from '../games/drawing/DrawingGameEngine';
 import { LudoGameEngine } from '../games/ludo/LudoGameEngine';
 import { SnakeLadderGameEngine } from '../games/snakeladder/SnakeLadderGameEngine';
+import { UnoGameEngine } from '../games/uno/UnoGameEngine';
 import { GAME_META } from '../core/GameEngine';
 
-const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine };
+const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine };
 
 const GAME_GRADIENTS = {
   drawing: 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',

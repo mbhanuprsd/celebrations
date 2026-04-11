@@ -1,5 +1,5 @@
 // src/components/HomeScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box, Typography, TextField, Button, Card, CardContent,
   Slider, CircularProgress, Alert, Collapse, IconButton,
@@ -11,19 +11,22 @@ import LoginIcon from '@mui/icons-material/Login';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import LogoutIcon from '@mui/icons-material/Logout';
 import GroupIcon from '@mui/icons-material/Group';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
 import { useGameContext } from '../context/GameContext';
 import { GAME_META } from '../core/GameEngine';
 import { listenActiveGames } from '../firebase/services';
+import { useState as useStateInner, useEffect } from 'react';
 
 const GAME_GRADIENTS = {
   drawing: 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',
   ludo: 'linear-gradient(135deg, #FFD166 0%, #EF476F 100%)',
   snakeladder: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)',
+  uno: 'linear-gradient(135deg, #DC2626 0%, #7c3aed 100%)',
 };
-const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0' };
+const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0', uno: '#a855f7' };
 
 function BgOrbs() {
   const orbs = [
@@ -278,7 +281,7 @@ function OnlineUsersStrip() {
 }
 
 function ActiveGamesPanel() {
-  const [games, setGames] = useState([]);
+  const [games, setGames] = useStateInner([]);
 
   useEffect(() => {
     const unsub = listenActiveGames(setGames);
@@ -361,8 +364,6 @@ function ActiveGamesPanel() {
     </Box>
   );
 }
-
-
 export function HomeScreen() {
   const { state, logout } = useGameContext();
   const { create, join } = useRoom();
@@ -374,13 +375,17 @@ export function HomeScreen() {
   const [settings, setSettings] = useState({ maxPlayers: 8, rounds: 3, drawTime: 80 });
   const [ludoSettings, setLudoSettings] = useState({ maxPlayers: 4 });
   const [slSettings, setSlSettings] = useState({ maxPlayers: 4 });
+  const [unoSettings, setUnoSettings] = useState({ maxPlayers: 6 });
   const [localError, setLocalError] = useState('');
 
   const meta = GAME_META[gameType];
 
   const handleCreate = async () => {
     setLocalError('');
-    const gs = gameType === 'ludo' ? ludoSettings : gameType === 'snakeladder' ? slSettings : settings;
+    const gs = gameType === 'ludo' ? ludoSettings
+      : gameType === 'snakeladder' ? slSettings
+        : gameType === 'uno' ? unoSettings
+          : settings;
     await create(playerName, gs, gameType);
   };
 
@@ -511,6 +516,7 @@ export function HomeScreen() {
                   </>)}
                   {gameType === 'ludo' && <SettingSlider label="Players" icon="🎲" value={ludoSettings.maxPlayers} color="#FFD166" min={2} max={4} marks={[{ value: 2, label: '2' }, { value: 3, label: '3' }, { value: 4, label: '4' }]} onChange={v => setLudoSettings(s => ({ ...s, maxPlayers: v }))} />}
                   {gameType === 'snakeladder' && <SettingSlider label="Players" icon="🐍" value={slSettings.maxPlayers} color="#06D6A0" min={2} max={12} marks={[{ value: 2, label: '2' }, { value: 6, label: '6' }, { value: 12, label: '12' }]} onChange={v => setSlSettings(s => ({ ...s, maxPlayers: v }))} />}
+                  {gameType === 'uno' && <SettingSlider label="Players" icon="🃏" value={unoSettings.maxPlayers} color="#a855f7" min={2} max={10} marks={[{ value: 2, label: '2' }, { value: 6, label: '6' }, { value: 10, label: '10' }]} onChange={v => setUnoSettings(s => ({ ...s, maxPlayers: v }))} />}
                   <Collapse in={!!localError}>
                     <Alert severity="error" sx={{ mb: 1.5, borderRadius: '12px', bgcolor: 'rgba(239,35,60,0.09)', color: '#EF233C', border: '1px solid rgba(239,35,60,0.22)' }}>{localError}</Alert>
                   </Collapse>
@@ -538,7 +544,7 @@ export function HomeScreen() {
                   </Box>
                   <TextField fullWidth label="Room Code" variant="outlined" value={roomCode}
                     onChange={e => { setRoomCode(e.target.value.toUpperCase()); setLocalError(''); }}
-                    inputProps={{ maxLength: 6, style: { letterSpacing: '6px', fontWeight: 900, fontSize: '1.6rem', textAlign: 'center', color: '#F72585', fontFamily: 'monospace' } }}
+                    inputProps={{ maxLength: 6, style: { letterSpacing: '10px', fontWeight: 900, fontSize: '1.9rem', textAlign: 'center', color: '#F72585', fontFamily: 'monospace' } }}
                     placeholder="——————" onKeyDown={e => e.key === 'Enter' && handleJoin()}
                     InputLabelProps={{ sx: { color: '#484f58' } }}
                     sx={{
