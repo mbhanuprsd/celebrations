@@ -46,13 +46,16 @@ export function LeaveConfirmModal({ open, onCancel, onConfirm }) {
           bgcolor: '#0c1a2e', borderRadius: '22px', p: 3,
           border: '1px solid rgba(255,255,255,0.1)',
           boxShadow: '0 24px 64px rgba(0,0,0,0.85)',
-          textAlign: 'center', minWidth: 255,
+          textAlign: 'center', minWidth: 260, maxWidth: 320,
         }}>
           <Typography sx={{ fontWeight: 900, fontSize: '1rem', color: '#f0f6fc', mb: 0.8 }}>
             Leave game?
           </Typography>
-          <Typography sx={{ fontSize: '0.76rem', color: '#475569', mb: 2.5, lineHeight: 1.5 }}>
-            You'll be removed from the room. You cannot rejoin once you leave.
+          <Typography sx={{ fontSize: '0.74rem', color: '#475569', mb: 0.6, lineHeight: 1.55 }}>
+            This will <b style={{ color: '#ef4444' }}>permanently remove</b> you from the room.
+          </Typography>
+          <Typography sx={{ fontSize: '0.7rem', color: '#334155', mb: 2.5, lineHeight: 1.5 }}>
+            💡 Closing the tab or losing connection won't remove you — you can always reopen the app to rejoin automatically.
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button fullWidth onClick={onCancel} sx={{
@@ -74,12 +77,17 @@ export function LeaveConfirmModal({ open, onCancel, onConfirm }) {
   );
 }
 
-// ── Resume banner (shown on HomeScreen when a saved session exists) ───────────
+// ── Resume banner (shown on HomeScreen only if auto-rejoin didn't fire) ────────
 export function ResumeBanner({ onResume, onDismiss }) {
   const session = getStoredSession();
   if (!session) return null;
 
-  const gameLabels = { drawing: '🎨 Draw & Guess', ludo: '🎲 Ludo', snakeladder: '🐍 Snake & Ladder', uno: '🃏 UNO' };
+  const gameLabels = {
+    drawing: '🎨 Draw & Guess',
+    ludo: '🎲 Ludo',
+    snakeladder: '🐍 Snake & Ladder',
+    uno: '🃏 UNO',
+  };
 
   return (
     <motion.div
@@ -95,10 +103,11 @@ export function ResumeBanner({ onResume, onDismiss }) {
       }}>
         <Box>
           <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: '#f0f6fc' }}>
-            Resume game?
+            Reconnect to game?
           </Typography>
           <Typography sx={{ fontSize: '0.7rem', color: '#475569' }}>
-            {gameLabels[session.gameType] || 'Game'} · Room <b style={{ color: '#94a3b8' }}>{session.roomId}</b>
+            {gameLabels[session.gameType] || 'Game'} · Room{' '}
+            <b style={{ color: '#94a3b8' }}>{session.roomId}</b>
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 0.8, flexShrink: 0 }}>

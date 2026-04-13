@@ -96,9 +96,10 @@ export const joinRoom = async (roomId, playerName) => {
   // Allow rejoining if already a player in this room (resume after browser close)
   const isExistingPlayer = !!room.players?.[userId];
   if (isExistingPlayer) {
-    // Just refresh online status and return
     await setPlayerOnlineStatus(roomId, userId, true);
-    return room;
+    // Return full room data so the caller can route correctly
+    const freshSnap = await getDoc(roomRef);
+    return freshSnap.exists() ? freshSnap.data() : room;
   }
 
   const playerCount = Object.keys(room.players || {}).length;

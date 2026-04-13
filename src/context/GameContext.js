@@ -2,10 +2,11 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import {
   signInWithGoogle, signOutUser, listenRoom, listenChat,
-  setUserOnline, removeUserOnline, checkNameAvailableForUid,
+  setUserOnline, removeUserOnline, checkNameAvailableForUid, joinRoom,
 } from '../firebase/services';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { getStoredSession, clearSession } from '../hooks/useGameSession';
 
 const GameContext = createContext(null);
 
@@ -102,11 +103,24 @@ export function GameProvider({ children }) {
           await setUserOnline(user.uid, name);
           localStorage.setItem(STORAGE_KEY, name);
           dispatch({ type: 'SET_LOGGED_IN', name });
+
+          // ── Auto-rejoin: if a session was saved, silently try to re-enter the room
+          const session = getStoredSession();
+          if (session?.roomId) {
+            try {
+              await joinRoom(session.roomId, name);
+              dispatch({ type: 'SET_ROOM_ID', roomId: session.roomId });
+              // Session stays active (room listener will keep it refreshed)
+              // Don't clearSession here — it will be refreshed by useGameGuard
+            } catch {
+              // Room is gone or we were kicked — clear the stale session silently
+              clearSession();
+            }
+          }
         } catch {
-          // Auth is ready but name registration failed — LoginScreen will show
+          // Auth is ready but setup failed — LoginScreen will show
         }
       } else {
-        // No session active — LoginScreen prompts Google sign-in
         dispatch({ type: 'SET_AUTH', userId: null, userEmail: null });
       }
     });
