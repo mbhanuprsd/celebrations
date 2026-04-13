@@ -1,5 +1,5 @@
 // src/games/snakeladder/SnakeLadderGame.js
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Box, Typography, Button, Chip, IconButton, Tooltip,
   LinearProgress, Avatar,
@@ -15,6 +15,7 @@ import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI'
 import { SnakeLadderBoard } from './SnakeLadderBoard';
 import { rollSnakeDice, moveSnakePiece, resetSnakeLadderGame } from './snakeLadderFirebaseService';
 import { PLAYER_COLOR_MAP } from './snakeLadderConstants';
+import { saveGameHistory } from '../../firebase/services';
 
 // ─── Dot patterns for dice ─────────────────────────────────────────────────
 const DOTS = {
@@ -207,6 +208,30 @@ export function SnakeLadderGame() {
   const myPos           = positions[userId] || 0;
   const alreadyFinished = rankings.includes(userId);
   const currentTurnColor = PLAYER_COLOR_MAP[colorMap[currentPlayerId]];
+
+  // Save game history once when the game ends
+  const slSavedRef = useRef(false);
+  useEffect(() => {
+    if (!winner || !userId || !room || slSavedRef.current) return;
+    slSavedRef.current = true;
+    const myRank = rankings.indexOf(userId) + 1 || playerOrder.length;
+    const winnerPlayer = room.players?.[winner];
+    const unfinished = playerOrder.filter(uid => !rankings.includes(uid));
+    const orderedUids = [...rankings, ...unfinished];
+    saveGameHistory(userId, {
+      gameType: 'snakeladder',
+      roomId: room.id,
+      myRank,
+      totalPlayers: playerOrder.length,
+      winnerName: winnerPlayer?.name || '',
+      rankedPlayers: orderedUids.map((uid, i) => ({
+        name: room.players?.[uid]?.name || uid,
+        score: null,
+        rank: i + 1,
+        isMe: uid === userId,
+      })),
+    });
+  }, [winner]); // eslint-disable-line
 
   // All hooks are now at the top level (ESLint happy)
   const handleRoll = useCallback(async () => {

@@ -1,5 +1,5 @@
 // src/games/drawing/FinalScores.js
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Box, Typography, Avatar, Paper, Button, Divider, Chip
 } from '@mui/material';
@@ -9,6 +9,7 @@ import ReplayIcon from '@mui/icons-material/Replay';
 import HomeIcon from '@mui/icons-material/Home';
 import { useRoom } from '../../hooks/useRoom';
 import { useGameContext } from '../../context/GameContext';
+import { saveGameHistory } from '../../firebase/services';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32'];
@@ -28,6 +29,27 @@ export function FinalScores() {
     .sort((a, b) => b.score - a.score);
   const winner = players[0];
   const isWinner = winner?.id === userId;
+
+  // Save game history once when final scores are shown
+  const savedRef = useRef(false);
+  useEffect(() => {
+    if (!userId || !room || savedRef.current) return;
+    savedRef.current = true;
+    const myRank = players.findIndex(p => p.id === userId) + 1;
+    saveGameHistory(userId, {
+      gameType: 'drawing',
+      roomId: room.id,
+      myRank,
+      totalPlayers: players.length,
+      winnerName: winner?.name || '',
+      rankedPlayers: players.map((p, i) => ({
+        name: p.name,
+        score: p.score || 0,
+        rank: i + 1,
+        isMe: p.id === userId,
+      })),
+    });
+  }, [userId, room]); // eslint-disable-line
 
   return (
     <Box sx={{

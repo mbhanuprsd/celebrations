@@ -1,5 +1,5 @@
 // src/games/uno/UnoGame.js  — Ocho (Plato) style
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Box, Typography, Avatar, Modal } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReplayIcon from '@mui/icons-material/Replay';
@@ -10,6 +10,7 @@ import { useGameGuard } from '../../hooks/useGameSession';
 import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI';
 import { playUnoCard, drawUnoCard, resetUnoGame } from './unoFirebaseService';
 import { canPlayCard, getCardLabel, UNO_COLOR_META, PLAYABLE_COLORS } from './unoConstants';
+import { saveGameHistory } from '../../firebase/services';
 
 const C = UNO_COLOR_META;
 
@@ -218,6 +219,33 @@ export function UnoGame() {
   const gameOver     = !!u?.winner;
   const pendingDraw  = u?.pendingDraw || 0;
   const pendingDrawType = u?.pendingDrawType || null;
+
+  // Save game history once when game ends
+  const unoSavedRef = useRef(false);
+  useEffect(() => {
+    if (!gameOver || !userId || !room || unoSavedRef.current) return;
+    unoSavedRef.current = true;
+    const rankings = u?.rankings || [];
+    const allPlayers = u?.playerOrder || [];
+    const myFinalRank = myRank >= 0 ? myRank + 1 : allPlayers.length;
+    const winnerPlayer = room.players?.[u?.winner];
+    // rankings holds finish order; players not yet in rankings finished last
+    const unfinished = allPlayers.filter(uid => !rankings.includes(uid));
+    const orderedUids = [...rankings, ...unfinished];
+    saveGameHistory(userId, {
+      gameType: 'uno',
+      roomId: room.id,
+      myRank: myFinalRank,
+      totalPlayers: allPlayers.length,
+      winnerName: winnerPlayer?.name || '',
+      rankedPlayers: orderedUids.map((uid, i) => ({
+        name: room.players?.[uid]?.name || uid,
+        score: null,
+        rank: i + 1,
+        isMe: uid === userId,
+      })),
+    });
+  }, [gameOver]); // eslint-disable-line
 
   const playableIds  = useMemo(() => {
     if (!u || !isMyTurn || myFinished || gameOver) return new Set();

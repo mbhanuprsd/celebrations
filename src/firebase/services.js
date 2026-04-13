@@ -4,7 +4,7 @@
 import {
   doc, collection, setDoc, updateDoc, onSnapshot, deleteDoc,
   serverTimestamp, deleteField, arrayUnion, getDoc, query, where, limit,
-  increment
+  increment, orderBy, getDocs, addDoc
 } from 'firebase/firestore';
 import {
   ref, set, onValue, off, push, onDisconnect, serverTimestamp as rtServerTimestamp, remove
@@ -454,6 +454,43 @@ export const listenOnlineUsers = (callback) => {
     callback(Object.values(val));
   });
   return unsubscribe;
+};
+
+// ─── Game History ──────────────────────────────────────────────────────────
+
+/**
+ * Save a completed game to the user's history.
+ * gameData: { gameType, roomId, rank, totalPlayers, winner, opponents }
+ */
+export const saveGameHistory = async (uid, gameData) => {
+  if (!uid) return;
+  try {
+    await addDoc(collection(db, 'users', uid, 'gameHistory'), {
+      ...gameData,
+      playedAt: serverTimestamp(),
+    });
+  } catch (e) {
+    console.warn('saveGameHistory failed:', e);
+  }
+};
+
+/**
+ * Fetch the last N completed games for a user.
+ */
+export const getUserGameHistory = async (uid, limitCount = 15) => {
+  if (!uid) return [];
+  try {
+    const q = query(
+      collection(db, 'users', uid, 'gameHistory'),
+      orderBy('playedAt', 'desc'),
+      limit(limitCount)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.warn('getUserGameHistory failed:', e);
+    return [];
+  }
 };
 
 export const listenActiveGames = (callback) => {

@@ -1,5 +1,5 @@
 // src/components/HomeScreen.js
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box, Typography, TextField, Button, Card, CardContent,
   Slider, CircularProgress, Alert, Collapse, IconButton,
@@ -16,7 +16,7 @@ import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
 import { useGameContext } from '../context/GameContext';
 import { GAME_META } from '../core/GameEngine';
-import { listenActiveGames } from '../firebase/services';
+import { listenActiveGames, getUserGameHistory } from '../firebase/services';
 import { useState as useStateInner, useEffect } from 'react';
 import { getStoredSession } from '../hooks/useGameSession';
 import { ResumeBanner } from './GameSharedUI';
@@ -365,6 +365,226 @@ function ActiveGamesPanel() {
     </Box>
   );
 }
+const RANK_MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
+const GAME_TYPE_LABEL = { drawing: 'Drawing', ludo: 'Ludo', snakeladder: 'Snake & Ladder', uno: 'UNO' };
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const ms = ts.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : Date.now());
+  const seconds = Math.floor((Date.now() - ms) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function PastGamesPanel({ userId }) {
+  const [games, setGames] = useStateInner([]);
+  const [loading, setLoading] = useStateInner(true);
+  const [expanded, setExpanded] = useStateInner(false);
+  const [openId, setOpenId] = useStateInner(null);
+
+  useEffect(() => {
+    if (!userId) { setLoading(false); return; }
+    getUserGameHistory(userId, 15).then(data => {
+      setGames(data);
+      setLoading(false);
+    });
+  }, [userId]);
+
+  if (loading) return (
+    <Box sx={{ mb: 2.5 }}>
+      <Box display="flex" alignItems="center" gap={1} mb={1.2}>
+        <Typography sx={{ fontSize: '0.88rem' }}>🕹️</Typography>
+        <Typography sx={{ fontWeight: 900, fontSize: '0.72rem', color: '#c9d1d9', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Past Games</Typography>
+      </Box>
+      {[0, 1, 2].map(i => <Skeleton key={i} variant="rounded" height={72} sx={{ mb: 0.9, borderRadius: '16px', bgcolor: 'rgba(255,255,255,0.04)' }} />)}
+    </Box>
+  );
+
+  if (games.length === 0) return null;
+
+  const visibleGames = expanded ? games : games.slice(0, 3);
+
+  return (
+    <Box sx={{ mb: 2.5 }}>
+      {/* Section header */}
+      <Box display="flex" alignItems="center" justifyContent="space-between" mb={1.2}>
+        <Box display="flex" alignItems="center" gap={1}>
+          <Typography sx={{ fontSize: '0.88rem' }}>🕹️</Typography>
+          <Typography sx={{ fontWeight: 900, fontSize: '0.72rem', color: '#c9d1d9', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Your Past Games
+          </Typography>
+          <Chip label={games.length} size="small" sx={{ height: 16, minWidth: 22, fontSize: '0.6rem', fontWeight: 900, bgcolor: 'rgba(76,201,240,0.14)', color: '#4CC9F0', border: '1px solid rgba(76,201,240,0.28)' }} />
+        </Box>
+        {games.length > 3 && (
+          <Typography onClick={() => setExpanded(e => !e)} sx={{ fontSize: '0.66rem', color: '#4CC9F0', cursor: 'pointer', fontWeight: 700, '&:hover': { opacity: 0.8 } }}>
+            {expanded ? 'Show less' : `+${games.length - 3} more`}
+          </Typography>
+        )}
+      </Box>
+
+      <AnimatePresence initial={false}>
+        {visibleGames.map((game, i) => {
+          const glow = GAME_GLOW[game.gameType] || '#4CC9F0';
+          const grad = GAME_GRADIENTS[game.gameType] || GAME_GRADIENTS.drawing;
+          const meta = GAME_META[game.gameType] || {};
+          const myRank = game.myRank || game.rank || 0;
+          const isWin = myRank === 1;
+          const isOpen = openId === game.id;
+          // Support both new schema (rankedPlayers) and old (opponents)
+          const rankedPlayers = game.rankedPlayers || [];
+          const hasScores = rankedPlayers.some(p => p.score != null && p.score > 0);
+          const winnerName = game.winnerName || game.winner || '';
+
+          return (
+            <motion.div key={game.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: i * 0.04 }}>
+              <Box
+                onClick={() => setOpenId(isOpen ? null : game.id)}
+                sx={{
+                  border: `1px solid ${glow}${isWin ? '40' : '1a'}`,
+                  borderRadius: '16px',
+                  background: isWin
+                    ? `linear-gradient(135deg, ${glow}10, rgba(14,18,27,0.97))`
+                    : 'rgba(255,255,255,0.025)',
+                  mb: 0.9, overflow: 'hidden', cursor: 'pointer',
+                  boxShadow: isWin ? `0 4px 20px ${glow}14` : 'none',
+                  transition: 'border-color 0.15s',
+                  '&:hover': { borderColor: `${glow}40` },
+                }}
+              >
+                {/* Top colour bar */}
+                <Box sx={{ height: 2, background: grad, opacity: isWin ? 1 : 0.4 }} />
+
+                {/* Main row */}
+                <Box display="flex" alignItems="center" gap={1.4} px={1.6} py={1.2}>
+                  {/* Game icon */}
+                  <Box sx={{
+                    width: 38, height: 38, borderRadius: '11px', flexShrink: 0,
+                    background: grad, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.2rem', opacity: isWin ? 1 : 0.7,
+                    boxShadow: isWin ? `0 3px 12px ${glow}40` : 'none',
+                  }}>
+                    {meta.icon || '🎮'}
+                  </Box>
+
+                  {/* Centre */}
+                  <Box flex={1} minWidth={0}>
+                    {/* Game type + rank badge */}
+                    <Box display="flex" alignItems="center" gap={0.7} flexWrap="wrap">
+                      <Typography sx={{ fontWeight: 900, fontSize: '0.82rem', color: isWin ? glow : '#c9d1d9' }}>
+                        {GAME_TYPE_LABEL[game.gameType] || game.gameType}
+                      </Typography>
+                      <Chip
+                        label={`${RANK_MEDAL[myRank] || `#${myRank}`} ${isWin ? 'Winner!' : `${myRank}/${game.totalPlayers}`}`}
+                        size="small"
+                        sx={{
+                          height: 17, fontSize: '0.6rem', fontWeight: 900,
+                          bgcolor: isWin ? 'rgba(255,215,0,0.13)' : myRank === 2 ? 'rgba(192,192,192,0.1)' : myRank === 3 ? 'rgba(205,127,50,0.1)' : 'rgba(255,255,255,0.06)',
+                          color: isWin ? '#FFD700' : myRank === 2 ? '#C0C0C0' : myRank === 3 ? '#CD7F32' : '#8b949e',
+                          border: isWin ? '1px solid rgba(255,215,0,0.32)' : '1px solid rgba(255,255,255,0.08)',
+                        }}
+                      />
+                    </Box>
+
+                    {/* Winner summary (only if I didn't win) */}
+                    {!isWin && winnerName && (
+                      <Typography sx={{ fontSize: '0.63rem', color: '#FFD700', mt: 0.15, fontWeight: 700 }}>
+                        🏆 {winnerName} won
+                      </Typography>
+                    )}
+
+                    {/* Compact player row when collapsed */}
+                    {!isOpen && rankedPlayers.length > 0 && (
+                      <Box display="flex" alignItems="center" gap={0.4} mt={0.35} flexWrap="wrap">
+                        {rankedPlayers.slice(0, 5).map((p, j) => {
+                          const hue = [...(p.name || 'x')].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
+                          const color = `hsl(${hue}, 65%, 55%)`;
+                          return (
+                            <Box key={j} sx={{ display: 'flex', alignItems: 'center', gap: 0.25, px: 0.55, py: 0.1, borderRadius: '7px', bgcolor: p.isMe ? `${glow}18` : 'rgba(255,255,255,0.05)', border: p.isMe ? `1px solid ${glow}35` : '1px solid rgba(255,255,255,0.07)' }}>
+                              <Typography sx={{ fontSize: '0.58rem' }}>{RANK_MEDAL[p.rank] || `#${p.rank}`}</Typography>
+                              <Typography sx={{ fontSize: '0.6rem', fontWeight: p.isMe ? 900 : 600, color: p.isMe ? glow : '#8b949e', maxWidth: 52, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {p.isMe ? 'You' : p.name}
+                              </Typography>
+                              {hasScores && p.score != null && (
+                                <Typography sx={{ fontSize: '0.58rem', color: '#484f58' }}>{p.score}pt</Typography>
+                              )}
+                            </Box>
+                          );
+                        })}
+                        {rankedPlayers.length > 5 && <Typography sx={{ fontSize: '0.57rem', color: '#484f58' }}>+{rankedPlayers.length - 5}</Typography>}
+                      </Box>
+                    )}
+                  </Box>
+
+                  {/* Right side: time + chevron */}
+                  <Box display="flex" flexDirection="column" alignItems="flex-end" gap={0.3} flexShrink={0}>
+                    <Typography sx={{ fontSize: '0.6rem', color: '#484f58' }}>{timeAgo(game.playedAt)}</Typography>
+                    <Typography sx={{ fontSize: '0.65rem', color: '#484f58', transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</Typography>
+                  </Box>
+                </Box>
+
+                {/* Expanded leaderboard */}
+                <Collapse in={isOpen}>
+                  <Box sx={{ px: 1.6, pb: 1.4, pt: 0.2 }}>
+                    <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.06)', mb: 1.2 }} />
+                    <Typography sx={{ fontSize: '0.62rem', fontWeight: 900, color: '#484f58', textTransform: 'uppercase', letterSpacing: '0.07em', mb: 0.8 }}>
+                      Final Standings
+                    </Typography>
+                    {rankedPlayers.map((p, j) => {
+                      const hue = [...(p.name || 'x')].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
+                      const rowColor = `hsl(${hue}, 65%, 55%)`;
+                      const isFirst = p.rank === 1;
+                      return (
+                        <motion.div key={j} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: j * 0.045 }}>
+                          <Box display="flex" alignItems="center" gap={1.2} sx={{
+                            p: '7px 10px', mb: 0.5, borderRadius: '10px',
+                            bgcolor: p.isMe ? `${glow}12` : isFirst ? 'rgba(255,215,0,0.06)' : 'rgba(255,255,255,0.03)',
+                            border: p.isMe ? `1px solid ${glow}30` : isFirst ? '1px solid rgba(255,215,0,0.2)' : '1px solid rgba(255,255,255,0.05)',
+                          }}>
+                            {/* Medal / rank */}
+                            <Typography sx={{ fontSize: '1rem', width: 22, textAlign: 'center', flexShrink: 0 }}>
+                              {RANK_MEDAL[p.rank] || `#${p.rank}`}
+                            </Typography>
+                            {/* Avatar */}
+                            <Avatar sx={{ width: 24, height: 24, bgcolor: rowColor, fontSize: '0.55rem', fontWeight: 900, flexShrink: 0 }}>
+                              {(p.name || '?').slice(0, 2).toUpperCase()}
+                            </Avatar>
+                            {/* Name */}
+                            <Typography sx={{ flex: 1, fontWeight: p.isMe ? 900 : 700, fontSize: '0.78rem', color: p.isMe ? glow : isFirst ? '#FFD700' : '#c9d1d9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {p.isMe ? `${p.name} (You)` : p.name}
+                            </Typography>
+                            {/* Score (drawing only) */}
+                            {hasScores && p.score != null && (
+                              <Chip
+                                label={`${p.score} pts`}
+                                size="small"
+                                sx={{
+                                  height: 17, fontSize: '0.6rem', fontWeight: 900, flexShrink: 0,
+                                  bgcolor: p.isMe ? `${glow}18` : 'rgba(255,255,255,0.06)',
+                                  color: p.isMe ? glow : '#8b949e',
+                                  border: p.isMe ? `1px solid ${glow}30` : '1px solid rgba(255,255,255,0.08)',
+                                }}
+                              />
+                            )}
+                          </Box>
+                        </motion.div>
+                      );
+                    })}
+                  </Box>
+                </Collapse>
+              </Box>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
+    </Box>
+  );
+}
+
+
 export function HomeScreen() {
   const { state, logout } = useGameContext();
   const { create, join } = useRoom();
@@ -594,6 +814,7 @@ export function HomeScreen() {
           {tab === 'home' && (
             <motion.div key="open-rooms" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.3, delay: 0.1 }}>
               <OnlineUsersStrip />
+              <PastGamesPanel userId={state.userId} />
               <ActiveGamesPanel />
               <OpenRoomsPanel setLocalError={setLocalError} />
             </motion.div>

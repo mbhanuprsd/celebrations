@@ -26,5 +26,10 @@ service cloud.firestore {
       allow delete: if request.auth != null
         && resource.data.hostId == request.auth.uid;
     }
+
+    // Game history: each user can only read/write their own history
+    match /users/{uid}/gameHistory/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
   }
 }

@@ -1,5 +1,5 @@
 // src/games/ludo/LudoGame.js — Ludo King mobile-first, no-scroll, 100dvh
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { Box, Typography, IconButton, Button, Chip, Avatar } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
@@ -13,6 +13,7 @@ import { LudoBoard } from './LudoBoard';
 import { LudoDice } from './LudoDice';
 import { rollDice, movePiece, resetLudoGame } from './ludoFirebaseService';
 import { LUDO_COLORS } from './ludoConstants';
+import { saveGameHistory } from '../../firebase/services';
 
 // ─── Corner player badge (overlaid on board) ──────────────────────────────
 function CornerCard({ color, player, isCurrentTurn, isMe, pieces }) {
@@ -167,6 +168,34 @@ export function LudoGame() {
   const isMyTurn   = ls?.currentTurn === myColor;
   const canRoll    = isMyTurn && !ls?.diceRolled && !ls?.winner;
   const colorInfo  = LUDO_COLORS[myColor] || LUDO_COLORS.red;
+
+  // Save game history once when a winner is declared
+  const ludoSavedRef = useRef(false);
+  useEffect(() => {
+    if (!ls?.winner || !userId || !room || ludoSavedRef.current) return;
+    ludoSavedRef.current = true;
+    const rankings = ls.rankings || [ls.winner];
+    const myRank = rankings.indexOf(userId) + 1 || rankings.length + 1;
+    const winnerPlayer = room.players?.[ls.winner];
+    // Build ranked list — players in rankings order first, then unranked after
+    const rankedUids = [...rankings];
+    const allUids = Object.keys(room.players || {});
+    const unrankedUids = allUids.filter(uid => !rankedUids.includes(uid));
+    const orderedUids = [...rankedUids, ...unrankedUids];
+    saveGameHistory(userId, {
+      gameType: 'ludo',
+      roomId: room.id,
+      myRank,
+      totalPlayers: allUids.length,
+      winnerName: winnerPlayer?.name || '',
+      rankedPlayers: orderedUids.map((uid, i) => ({
+        name: room.players?.[uid]?.name || uid,
+        score: null,
+        rank: i + 1,
+        isMe: uid === userId,
+      })),
+    });
+  }, [ls?.winner]); // eslint-disable-line
 
   const handleRoll = useCallback(async () => {
     if (actionPending) return;
