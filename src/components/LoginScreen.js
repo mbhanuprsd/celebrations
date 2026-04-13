@@ -163,8 +163,8 @@ export function LoginScreen() {
           </Button>
 
           <Typography sx={{ mt: 2.5, fontSize: '0.66rem', color: '#2a3848', lineHeight: 1.5 }}>
-            Your Google first name is used as your in-game display name.
-            <br />No personal data is stored beyond gameplay.
+            Your Google name is used as your initial username.
+            <br />You can change it anytime from the home screen.
           </Typography>
         </Box>
       </motion.div>

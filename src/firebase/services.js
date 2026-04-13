@@ -451,6 +451,27 @@ export const setUserOnline = async (uid, name) => {
   onDisconnect(userRef).remove();
 };
 
+/**
+ * Update a player's display name inside an active room (Firestore) and
+ * in the onlineUsers node (RTDB).  Safe to call even when the user is
+ * not currently in a room (roomId === null).
+ */
+export const updatePlayerNameInRoom = async (uid, roomId, newName) => {
+  // Always update RTDB presence
+  const userRef = ref(rtdb, `onlineUsers/${uid}`);
+  await set(userRef, { uid, name: newName, since: rtServerTimestamp() });
+  onDisconnect(userRef).remove();
+
+  // Update Firestore room player entry only if inside a room
+  if (roomId) {
+    const roomRef = doc(db, 'rooms', roomId);
+    await updateDoc(roomRef, {
+      [`players.${uid}.name`]: newName,
+      [`players.${uid}.avatar`]: generateAvatar(newName),
+    });
+  }
+};
+
 export const removeUserOnline = async (uid) => {
   await remove(ref(rtdb, `onlineUsers/${uid}`));
 };

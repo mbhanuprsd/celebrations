@@ -3,6 +3,7 @@ import React, { createContext, useContext, useReducer, useEffect, useRef } from 
 import {
   signInWithGoogle, signOutUser, listenRoom, listenChat,
   setUserOnline, removeUserOnline, checkNameAvailableForUid, joinRoom,
+  updatePlayerNameInRoom,
 } from '../firebase/services';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -35,6 +36,8 @@ function reducer(state, action) {
       return { ...state, userId: action.userId, userEmail: action.userEmail ?? null, isAuthReady: true };
     case 'SET_LOGGED_IN':
       return { ...state, playerName: action.name, isLoggedIn: true };
+    case 'SET_PLAYER_NAME':
+      return { ...state, playerName: action.name };
     case 'LOGOUT':
       return { ...state, playerName: null, isLoggedIn: false, roomId: null, room: null,
                userId: null, userEmail: null, isAuthReady: true };
@@ -55,10 +58,10 @@ function reducer(state, action) {
   }
 }
 
-/** Extract first name from Google displayName, falling back to email local-part. */
-function extractFirstName(user) {
+/** Extract the full display name from Google account, falling back to email local-part. */
+function extractFullName(user) {
   if (user.displayName) {
-    return user.displayName.split(' ')[0].trim();
+    return user.displayName.trim();
   }
   if (user.email) {
     return user.email.split('@')[0].replace(/[^A-Za-z0-9]/g, '');
@@ -95,7 +98,7 @@ export function GameProvider({ children }) {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const firstName = extractFirstName(user);
+        const firstName = extractFullName(user);
         dispatch({ type: 'SET_AUTH', userId: user.uid, userEmail: user.email });
 
         try {
@@ -154,6 +157,24 @@ export function GameProvider({ children }) {
     setTimeout(() => dispatch({ type: 'SET_NOTIFICATION', notification: null }), 3000);
   };
 
+  /** Update the player's username — validates uniqueness, persists everywhere */
+  const updateUsername = async (newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed) throw new Error('Username cannot be empty');
+    if (trimmed.length < 2)  throw new Error('Username must be at least 2 characters');
+    if (trimmed.length > 20) throw new Error('Username must be 20 characters or less');
+    if (!/^[A-Za-z0-9_ ]+$/.test(trimmed))
+      throw new Error('Only letters, numbers, spaces and underscores allowed');
+
+    // Check availability (exclude self)
+    const available = await checkNameAvailableForUid(trimmed, state.userId);
+    if (!available) throw new Error('That name is already taken');
+
+    await updatePlayerNameInRoom(state.userId, state.roomId, trimmed);
+    localStorage.setItem(STORAGE_KEY, trimmed);
+    dispatch({ type: 'SET_PLAYER_NAME', name: trimmed });
+  };
+
   /** Trigger Google sign-in popup — called from LoginScreen */
   const loginWithGoogle = async () => {
     dispatch({ type: 'SET_LOADING', value: true });
@@ -182,7 +203,7 @@ export function GameProvider({ children }) {
   return (
     <GameContext.Provider value={{
       state, setRoomId, leaveRoom, setLoading, setError, notify,
-      loginWithGoogle, logout,
+      loginWithGoogle, logout, updateUsername,
       // keep loginWithName as no-op alias so any existing callers don't crash
       loginWithName: async () => {},
     }}>

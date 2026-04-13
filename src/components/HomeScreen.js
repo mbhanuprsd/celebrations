@@ -11,6 +11,9 @@ import LoginIcon from '@mui/icons-material/Login';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import LogoutIcon from '@mui/icons-material/Logout';
 import GroupIcon from '@mui/icons-material/Group';
+import EditIcon from '@mui/icons-material/Edit';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
@@ -586,9 +589,35 @@ function PastGamesPanel({ userId }) {
 
 
 export function HomeScreen() {
-  const { state, logout } = useGameContext();
+  const { state, logout, updateUsername } = useGameContext();
   const { create, join } = useRoom();
   const playerName = state.playerName;
+
+  // ── Username editing ──────────────────────────────────────────────────────
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput,   setNameInput]   = useState('');
+  const [nameError,   setNameError]   = useState('');
+  const [nameSaving,  setNameSaving]  = useState(false);
+
+  const startEditName = () => {
+    setNameInput(playerName || '');
+    setNameError('');
+    setEditingName(true);
+  };
+  const cancelEditName = () => { setEditingName(false); setNameError(''); };
+  const saveEditName = async () => {
+    if (nameInput.trim() === playerName) { cancelEditName(); return; }
+    setNameSaving(true);
+    setNameError('');
+    try {
+      await updateUsername(nameInput);
+      setEditingName(false);
+    } catch (err) {
+      setNameError(err.message || 'Could not update username');
+    } finally {
+      setNameSaving(false);
+    }
+  };
 
   const [tab, setTab] = useState('home');
   const [roomCode, setRoomCode] = useState('');
@@ -647,8 +676,76 @@ export function HomeScreen() {
                   </Box>
                   <Box>
                     <Typography sx={{ color: '#484f58', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Playing as</Typography>
-                    <Typography sx={{ color: '#4CC9F0', fontWeight: 900, fontSize: '0.95rem', lineHeight: 1.1 }}>{playerName}</Typography>
-                    {state.userEmail && (
+
+                    {editingName ? (
+                      /* ── Inline edit mode ── */
+                      <Box>
+                        <Box display="flex" alignItems="center" gap={0.5} mt={0.3}>
+                          <TextField
+                            value={nameInput}
+                            onChange={e => { setNameInput(e.target.value); setNameError(''); }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter')  saveEditName();
+                              if (e.key === 'Escape') cancelEditName();
+                            }}
+                            size="small"
+                            autoFocus
+                            inputProps={{ maxLength: 20 }}
+                            error={!!nameError}
+                            sx={{
+                              width: 130,
+                              '& .MuiInputBase-input': { color: '#e6edf3', fontSize: '0.82rem', fontWeight: 700, py: '3px', px: '8px' },
+                              '& .MuiOutlinedInput-root': {
+                                borderRadius: '8px',
+                                '& fieldset': { borderColor: 'rgba(76,201,240,0.4)' },
+                                '&:hover fieldset': { borderColor: '#4CC9F0' },
+                                '&.Mui-focused fieldset': { borderColor: '#4CC9F0' },
+                              },
+                            }}
+                          />
+                          <Tooltip title="Save (Enter)">
+                            <span>
+                              <IconButton size="small" onClick={saveEditName} disabled={nameSaving}
+                                sx={{ color: '#22C55E', p: 0.3, '&:hover': { bgcolor: 'rgba(34,197,94,0.1)' } }}>
+                                {nameSaving
+                                  ? <CircularProgress size={13} sx={{ color: '#22C55E' }} />
+                                  : <CheckIcon sx={{ fontSize: 15 }} />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Cancel (Esc)">
+                            <span>
+                              <IconButton size="small" onClick={cancelEditName} disabled={nameSaving}
+                                sx={{ color: '#8b949e', p: 0.3, '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' } }}>
+                                <CloseIcon sx={{ fontSize: 15 }} />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
+                        {nameError && (
+                          <Typography sx={{ color: '#EF233C', fontSize: '0.6rem', mt: 0.4, maxWidth: 170 }}>
+                            {nameError}
+                          </Typography>
+                        )}
+                      </Box>
+                    ) : (
+                      /* ── Display mode ── */
+                      <Box display="flex" alignItems="center" gap={0.4}>
+                        <Typography sx={{ color: '#4CC9F0', fontWeight: 900, fontSize: '0.95rem', lineHeight: 1.1 }}>
+                          {playerName}
+                        </Typography>
+                        <Tooltip title="Edit username">
+                          <IconButton size="small" onClick={startEditName} sx={{
+                            color: '#30404f', p: 0.25,
+                            '&:hover': { color: '#4CC9F0', bgcolor: 'rgba(76,201,240,0.08)' },
+                          }}>
+                            <EditIcon sx={{ fontSize: 13 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    )}
+
+                    {state.userEmail && !editingName && (
                       <Typography sx={{ color: '#2a3848', fontSize: '0.56rem', lineHeight: 1.1, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {state.userEmail}
                       </Typography>
