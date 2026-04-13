@@ -3,10 +3,11 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Box, Typography, IconButton, Chip, Avatar } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
-import BackspaceIcon from '@mui/icons-material/Backspace';
 
 import { useGameContext } from '../../context/GameContext';
 import { useRoom } from '../../hooks/useRoom';
+import { useGameGuard } from '../../hooks/useGameSession';
+import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI';
 import { DrawingGameEngine } from './DrawingGameEngine';
 import { DrawingCanvas } from './Canvas';
 import { WordSelector } from './WordSelector';
@@ -295,6 +296,10 @@ export function DrawingGame() {
   const engineRef        = useRef(null);
   const timeoutCalledRef = useRef(false);
 
+  const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({
+    roomId, userId, gameType: room?.gameType || 'drawing', leaveCallback: leave,
+  });
+
   useEffect(() => {
     if (room && userId) {
       engineRef.current = new DrawingGameEngine(roomId, userId, room);
@@ -341,13 +346,15 @@ export function DrawingGame() {
     : room.roundStartTime || null;
 
   return (
-    <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', bgcolor: '#0d1117', overflow: 'hidden' }}>
+    <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', bgcolor: '#0d1117', overflow: 'hidden', position: 'relative' }}>
+
+      <OfflineBanner online={online} />
 
       {/* ── Top bar — 38px ── */}
       <Box sx={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        px: 1.5, height: 38, bgcolor: '#161b22',
-        borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
+        px: 1.5, height: 38, bgcolor: '#161b22', mt: !online ? '36px' : 0,
+        borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0, transition: 'margin 0.3s',
       }}>
         <Typography sx={{
           fontFamily: '"Fredoka One", cursive', fontSize: '1.05rem',
@@ -366,7 +373,7 @@ export function DrawingGame() {
             onClick={() => { navigator.clipboard.writeText(roomId); notify('Copied!'); }}
             sx={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 2, cursor: 'pointer',
               bgcolor: 'rgba(255,255,255,0.05)', color: '#8b949e', height: 20, fontSize: '0.65rem' }} />
-          <IconButton size="small" onClick={leave} sx={{ color: '#EF233C', p: 0.3 }}>
+          <IconButton size="small" onClick={requestLeave} sx={{ color: '#EF233C', p: 0.3 }}>
             <ExitToAppIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Box>
@@ -407,6 +414,8 @@ export function DrawingGame() {
         )}
         {room.status === 'roundEnd' && <RoundEndScreen key="re" room={room} />}
       </AnimatePresence>
+
+      <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
     </Box>
   );
 }

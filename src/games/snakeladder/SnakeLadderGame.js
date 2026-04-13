@@ -10,6 +10,8 @@ import ReplayIcon from '@mui/icons-material/Replay';
 import CasinoIcon from '@mui/icons-material/Casino';
 import { useGameContext } from '../../context/GameContext';
 import { useRoom } from '../../hooks/useRoom';
+import { useGameGuard } from '../../hooks/useGameSession';
+import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI';
 import { SnakeLadderBoard } from './SnakeLadderBoard';
 import { rollSnakeDice, moveSnakePiece, resetSnakeLadderGame } from './snakeLadderFirebaseService';
 import { PLAYER_COLOR_MAP } from './snakeLadderConstants';
@@ -186,6 +188,10 @@ export function SnakeLadderGame() {
   const [showEffect, setShowEffect] = useState(false);
   const effectTimerRef = useRef(null);
 
+  const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({
+    roomId, userId, gameType: 'snakeladder', leaveCallback: leave,
+  });
+
   // Safe destructuring even if sl is null
   const {
     playerOrder = [], colorMap = {}, positions = {},
@@ -304,12 +310,15 @@ export function SnakeLadderGame() {
   return (
     <Box sx={{
       height: '100dvh', bgcolor: '#080c12',
-      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative',
     }}>
+      <OfflineBanner online={online} />
+
       {/* ── Header ── */}
       <Box sx={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         px: { xs: 1.5, sm: 2 }, py: { xs: 1, sm: 1.2 },
+        mt: !online ? '36px' : 0, transition: 'margin 0.3s',
         bgcolor: 'rgba(14,21,32,0.96)', borderBottom: '1px solid rgba(255,255,255,0.07)',
         backdropFilter: 'blur(12px)', zIndex: 10, flexShrink: 0,
       }}>
@@ -340,7 +349,7 @@ export function SnakeLadderGame() {
             </Tooltip>
           )}
           <Tooltip title="Leave">
-            <IconButton size="small" onClick={leave} sx={{ color: '#8b949e', p: '5px' }}>
+            <IconButton size="small" onClick={requestLeave} sx={{ color: '#8b949e', p: '5px' }}>
               <ExitToAppIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -544,6 +553,8 @@ export function SnakeLadderGame() {
             isHost={isHost} onReset={handleReset} />
         )}
       </AnimatePresence>
+
+      <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
     </Box>
   );
 }

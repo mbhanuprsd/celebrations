@@ -9,7 +9,6 @@ const HAND_SIZE = 7;
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function recheckDeck(deck, discardPile) {
-  // When deck is empty, reshuffle all discard except the top card
   if (deck.length > 0) return { deck, discardPile };
   if (discardPile.length <= 1) return { deck, discardPile };
   const top = discardPile[discardPile.length - 1];
@@ -29,17 +28,57 @@ function dealCards(deck, playerIds) {
   return { hands, deck: d };
 }
 
+function drawCards(count, deck, discardPile) {
+  let d = [...deck];
+  let dp = [...discardPile];
+  const drawn = [];
+  for (let i = 0; i < count; i++) {
+    const refilled = recheckDeck(d, dp);
+    d = refilled.deck;
+    dp = refilled.discardPile;
+    if (d.length) drawn.push(d.shift());
+  }
+  return { drawn, deck: d, discardPile: dp };
+}
+
 // ─── Init ──────────────────────────────────────────────────────────────────
 
 export async function initUnoGame(roomId, playerOrder) {
   let deck = shuffleArray(buildDeck());
   const { hands, deck: remaining } = dealCards(deck, playerOrder);
 
-  // Pick first non-wild card as starter
+  // First card: must not be Wild or Wild+4
   let startIdx = remaining.findIndex(c => c.color !== 'wild');
   if (startIdx === -1) startIdx = 0;
   const topCard = remaining[startIdx];
-  const restDeck = remaining.filter((_, i) => i !== startIdx);
+  let restDeck = remaining.filter((_, i) => i !== startIdx);
+
+  // Handle starting card effects
+  let currentIndex = 0;
+  let direction = 1;
+  let pendingDraw = 0;
+  let pendingDrawType = null;
+  const count = playerOrder.length;
+
+  if (topCard.type === 'reverse') {
+    direction = -1;
+    if (count === 2) {
+      // Reverse in 2-player = skip; player 0 goes again — wait, actually skip = player 1 goes first... 
+      // In 2-player, reverse acts as skip so player 0 keeps turn. Stay at 0.
+      currentIndex = 0;
+    } else {
+      // Direction reversed, turn goes to last player
+      currentIndex = count - 1;
+    }
+  } else if (topCard.type === 'skip') {
+    // First player is skipped; start at index 1
+    currentIndex = nextIndex(0, direction, count);
+  } else if (topCard.type === 'draw2') {
+    // First player must draw 2 — set pendingDraw, they draw on their turn
+    pendingDraw = 2;
+    pendingDrawType = 'draw2';
+    currentIndex = 0;
+  }
 
   const unoState = {
     deck: restDeck,
@@ -48,9 +87,10 @@ export async function initUnoGame(roomId, playerOrder) {
     activeColor: topCard.color,
     hands,
     playerOrder,
-    currentIndex: 0,
-    direction: 1,
-    pendingDraw: 0,        // accumulated +2/+4 stacks
+    currentIndex,
+    direction,
+    pendingDraw,
+    pendingDrawType,
     rankings: [],
     winner: null,
     turnCount: 0,
@@ -59,6 +99,9 @@ export async function initUnoGame(roomId, playerOrder) {
 
   await updateDoc(doc(db, 'rooms', roomId), { status: 'playing', unoState });
   await sendSystemMessage(roomId, `🃏 UNO started! ${playerOrder.length} players. Good luck!`);
+  if (topCard.type === 'reverse') await sendSystemMessage(roomId, `↺ First card is Reverse!`);
+  if (topCard.type === 'skip')    await sendSystemMessage(roomId, `⊘ First card is Skip!`);
+  if (topCard.type === 'draw2')   await sendSystemMessage(roomId, `✋ First card is +2!`);
 }
 
 // ─── Play Card ─────────────────────────────────────────────────────────────
@@ -68,6 +111,7 @@ export async function playUnoCard(roomId, userId, cardId, chosenColor = null) {
   const room = snap.data();
   const u = room.unoState;
 
+  // ── Guards ──
   if (u.winner) return { error: 'Game over' };
   if (u.playerOrder[u.currentIndex] !== userId) return { error: 'Not your turn' };
 
@@ -76,82 +120,80 @@ export async function playUnoCard(roomId, userId, cardId, chosenColor = null) {
   if (cardIdx === -1) return { error: 'Card not in hand' };
   const card = hand[cardIdx];
 
-  if (!canPlayCard(card, u.topCard, u.activeColor)) return { error: 'Cannot play that card' };
-
-  // Wild requires chosen color
-  if ((card.type === 'wild' || card.type === 'wild4') && !chosenColor) {
-    return { error: 'Choose a color' };
+  // ── Server-side playability check (includes pendingDraw) ──
+  if (!canPlayCard(card, u.topCard, u.activeColor, u.pendingDraw, u.pendingDrawType)) {
+    return { error: 'Cannot play that card' };
   }
 
-  const newHand = hand.filter((_, i) => i !== cardIdx);
-  const newDiscardPile = [...u.discardPile, card];
-  const newActiveColor = chosenColor || card.color;
-  const count = u.playerOrder.length;
+  // Wild requires a color choice
+  if ((card.type === 'wild' || card.type === 'wild4') && !chosenColor) {
+    return { error: 'Choose a color first' };
+  }
 
+  const count = u.playerOrder.length;
+  const newHand = hand.filter((_, i) => i !== cardIdx);
+  const newDiscardPile = [...(u.discardPile || []), card];
+  const newActiveColor = chosenColor || card.color;
+
+  // ── Direction and skip logic ──
   let newDirection = u.direction;
-  let newPendingDraw = u.pendingDraw;
   let skip = false;
 
   if (card.type === 'reverse') {
     newDirection = -u.direction;
-    if (count === 2) skip = true; // reverse acts as skip in 2-player
+    if (count === 2) skip = true; // 2-player: reverse = skip
   }
   if (card.type === 'skip') skip = true;
-  if (card.type === 'draw2') newPendingDraw += 2;
-  if (card.type === 'wild4') newPendingDraw += 4;
 
+  // ── Pending draw: stack or start new chain ──
+  let newPendingDraw = 0;
+  let newPendingDrawType = null;
+
+  if (card.type === 'draw2') {
+    newPendingDraw = (u.pendingDraw || 0) + 2;
+    newPendingDrawType = 'draw2';
+  } else if (card.type === 'wild4') {
+    newPendingDraw = (u.pendingDraw || 0) + 4;
+    newPendingDrawType = 'wild4';
+  }
+  // Playing any other card clears any previous pending (shouldn't reach here with pending active)
+
+  // ── Check if player finished ──
   const newHands = { ...u.hands, [userId]: newHand };
-
-  // Check if this player finished
-  let newRankings = [...u.rankings];
+  let newRankings = [...(u.rankings || [])];
   const finished = newHand.length === 0;
   if (finished && !newRankings.includes(userId)) newRankings.push(userId);
 
-  // Remaining active players (those with cards left)
-  const remaining = u.playerOrder.filter(id => (id === userId ? newHand.length > 0 : (u.hands[id]?.length || 0) > 0) && !newRankings.includes(id));
-  const gameOver = remaining.length <= 1;
+  const remainingActive = u.playerOrder.filter(
+    id => (id === userId ? newHand.length > 0 : (u.hands[id]?.length || 0) > 0) && !newRankings.includes(id)
+  );
+  const gameOver = remainingActive.length <= 1;
 
+  // ── Advance turn ──
   let nextIdx = nextIndex(u.currentIndex, newDirection, count, skip);
 
-  // If next player has to draw (draw2 / wild4)
-  let nextHands = { ...newHands };
-  let finalDeck = [...u.deck];
-  let finalDiscard = [...newDiscardPile];
-
-  if (newPendingDraw > 0 && !gameOver) {
-    const nextUid = u.playerOrder[nextIdx];
-    const nextHand = [...(nextHands[nextUid] || [])];
-    for (let i = 0; i < newPendingDraw; i++) {
-      const refilled = recheckDeck(finalDeck, finalDiscard);
-      finalDeck = refilled.deck;
-      finalDiscard = refilled.discardPile;
-      if (finalDeck.length) nextHand.push(finalDeck.shift());
-    }
-    nextHands[nextUid] = nextHand;
-    // Skip that player's turn
-    nextIdx = nextIndex(nextIdx, newDirection, count, true);
-    newPendingDraw = 0;
-  }
+  // For draw2/wild4, DO NOT force-draw here.
+  // pendingDraw is persisted; the NEXT player will draw via drawUnoCard or stack.
 
   if (gameOver) {
-    // Add last remaining player to rankings
-    if (remaining.length === 1 && !newRankings.includes(remaining[0])) {
-      newRankings.push(remaining[0]);
+    if (remainingActive.length === 1 && !newRankings.includes(remainingActive[0])) {
+      newRankings.push(remainingActive[0]);
     }
   }
 
   const updates = {
-    'unoState.deck': finalDeck,
-    'unoState.discardPile': finalDiscard,
-    'unoState.topCard': card,
-    'unoState.activeColor': newActiveColor,
-    'unoState.hands': nextHands,
-    'unoState.direction': newDirection,
-    'unoState.pendingDraw': newPendingDraw,
-    'unoState.currentIndex': nextIdx,
-    'unoState.rankings': newRankings,
-    'unoState.turnCount': u.turnCount + 1,
-    'unoState.lastAction': { type: 'play', uid: userId, card, chosenColor },
+    'unoState.deck':            u.deck,
+    'unoState.discardPile':     newDiscardPile,
+    'unoState.topCard':         card,
+    'unoState.activeColor':     newActiveColor,
+    'unoState.hands':           newHands,
+    'unoState.direction':       newDirection,
+    'unoState.pendingDraw':     newPendingDraw,
+    'unoState.pendingDrawType': newPendingDrawType,
+    'unoState.currentIndex':    nextIdx,
+    'unoState.rankings':        newRankings,
+    'unoState.turnCount':       (u.turnCount || 0) + 1,
+    'unoState.lastAction':      { type: 'play', uid: userId, card, chosenColor },
   };
 
   if (gameOver) {
@@ -161,26 +203,17 @@ export async function playUnoCard(roomId, userId, cardId, chosenColor = null) {
 
   await updateDoc(doc(db, 'rooms', roomId), updates);
 
-  // System messages
-  const playerName = room.players?.[userId]?.name || 'Someone';
-  if (card.type === 'wild' || card.type === 'wild4') {
-    await sendSystemMessage(roomId, `🎨 ${playerName} played ${card.type === 'wild4' ? 'Wild +4' : 'Wild'} → ${chosenColor}`);
-  } else if (card.type === 'draw2') {
-    await sendSystemMessage(roomId, `✋ ${playerName} played +2!`);
-  } else if (card.type === 'skip') {
-    await sendSystemMessage(roomId, `⊘ ${playerName} skipped next player!`);
-  } else if (card.type === 'reverse') {
-    await sendSystemMessage(roomId, `↺ ${playerName} reversed direction!`);
-  }
-  if (finished) {
-    await sendSystemMessage(roomId, `🎉 ${playerName} finished at #${newRankings.length}!`);
-  }
-  if (newHand.length === 1) {
-    await sendSystemMessage(roomId, `⚠️ ${playerName} has UNO!`);
-  }
-  if (gameOver) {
-    await sendSystemMessage(roomId, `🏆 Game over! ${room.players?.[newRankings[0]]?.name} wins!`);
-  }
+  // ── System messages ──
+  const pName = room.players?.[userId]?.name || 'Someone';
+  if (card.type === 'wild4')   await sendSystemMessage(roomId, `🎨 ${pName} played Wild+4 → ${chosenColor}! Next player: draw ${newPendingDraw} or stack.`);
+  else if (card.type === 'wild')    await sendSystemMessage(roomId, `🎨 ${pName} played Wild → ${chosenColor}!`);
+  else if (card.type === 'draw2')   await sendSystemMessage(roomId, `✋ ${pName} played +2! Pending: ${newPendingDraw}`);
+  else if (card.type === 'skip')    await sendSystemMessage(roomId, `⊘ ${pName} played Skip!`);
+  else if (card.type === 'reverse') await sendSystemMessage(roomId, `↺ ${pName} reversed direction!`);
+
+  if (newHand.length === 1) await sendSystemMessage(roomId, `⚠️ ${pName} has UNO!`);
+  if (finished)             await sendSystemMessage(roomId, `🎉 ${pName} finished at #${newRankings.length}!`);
+  if (gameOver)             await sendSystemMessage(roomId, `🏆 Game over! ${room.players?.[newRankings[0]]?.name} wins!`);
 
   return { ok: true };
 }
@@ -196,33 +229,33 @@ export async function drawUnoCard(roomId, userId) {
   if (u.playerOrder[u.currentIndex] !== userId) return { error: 'Not your turn' };
 
   const count = u.playerOrder.length;
-  const drawCount = u.pendingDraw > 0 ? u.pendingDraw : 1;
 
-  let { deck: newDeck, discardPile: newDiscard } = recheckDeck([...u.deck], [...u.discardPile]);
-  const newHand = [...(u.hands[userId] || [])];
+  // If pendingDraw > 0: player must absorb all pending cards and lose their turn
+  // If no pending: draw exactly 1 card; if it's playable the player may choose to play it,
+  //   but in this implementation drawing always ends your turn (like Plato's Ocho).
+  const drawCount = (u.pendingDraw || 0) > 0 ? u.pendingDraw : 1;
+  const hadPending = (u.pendingDraw || 0) > 0;
 
-  for (let i = 0; i < drawCount; i++) {
-    const refilled = recheckDeck(newDeck, newDiscard);
-    newDeck = refilled.deck;
-    newDiscard = refilled.discardPile;
-    if (newDeck.length) newHand.push(newDeck.shift());
-  }
+  const { drawn, deck: newDeck, discardPile: newDiscard } = drawCards(drawCount, u.deck, u.discardPile);
+  const newHand = [...(u.hands[userId] || []), ...drawn];
 
+  // Drawing always passes the turn (no "draw then play" mechanic here, like Ocho)
   const nextIdx = nextIndex(u.currentIndex, u.direction, count);
-  const playerName = room.players?.[userId]?.name || 'Someone';
 
   await updateDoc(doc(db, 'rooms', roomId), {
-    'unoState.deck': newDeck,
-    'unoState.discardPile': newDiscard,
+    'unoState.deck':            newDeck,
+    'unoState.discardPile':     newDiscard,
     [`unoState.hands.${userId}`]: newHand,
-    'unoState.currentIndex': nextIdx,
-    'unoState.pendingDraw': 0,
-    'unoState.turnCount': u.turnCount + 1,
-    'unoState.lastAction': { type: 'draw', uid: userId, count: drawCount },
+    'unoState.currentIndex':    nextIdx,
+    'unoState.pendingDraw':     0,
+    'unoState.pendingDrawType': null,
+    'unoState.turnCount':       (u.turnCount || 0) + 1,
+    'unoState.lastAction':      { type: 'draw', uid: userId, count: drawCount },
   });
 
-  if (drawCount > 1) {
-    await sendSystemMessage(roomId, `📥 ${playerName} drew ${drawCount} cards!`);
+  const pName = room.players?.[userId]?.name || 'Someone';
+  if (hadPending) {
+    await sendSystemMessage(roomId, `📥 ${pName} drew ${drawCount} cards (penalty)!`);
   }
 
   return { ok: true, drew: drawCount };

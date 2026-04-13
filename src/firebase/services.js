@@ -3,7 +3,8 @@
 
 import {
   doc, collection, setDoc, updateDoc, onSnapshot, deleteDoc,
-  serverTimestamp, deleteField, arrayUnion, getDoc, query, where, limit
+  serverTimestamp, deleteField, arrayUnion, getDoc, query, where, limit,
+  increment
 } from 'firebase/firestore';
 import {
   ref, set, onValue, off, push, onDisconnect, serverTimestamp as rtServerTimestamp, remove
@@ -70,6 +71,14 @@ export const joinRoom = async (roomId, playerName) => {
 
   if (!roomSnap.exists()) throw new Error('Room not found');
   const room = roomSnap.data();
+
+  // Allow rejoining if already a player in this room (resume after browser close)
+  const isExistingPlayer = !!room.players?.[userId];
+  if (isExistingPlayer) {
+    // Just refresh online status and return
+    await setPlayerOnlineStatus(roomId, userId, true);
+    return room;
+  }
 
   const playerCount = Object.keys(room.players || {}).length;
   if (playerCount >= room.settings.maxPlayers) throw new Error('Room is full');
@@ -153,15 +162,13 @@ export const submitGuess = async (roomId, userId, playerName, guess, currentWord
 export const recordCorrectGuess = async (roomId, userId, score, timeBonus) => {
   await updateDoc(doc(db, 'rooms', roomId), {
     [`guessedPlayers.${userId}`]: { score, timeBonus, time: Date.now() },
-    [`players.${userId}.score`]: score,
+    [`players.${userId}.score`]: increment(score),   // ← ADD to existing score, not replace
   });
 };
 
 export const updateDrawerScore = async (roomId, drawerId, bonus) => {
-  const roomSnap = await getDoc(doc(db, 'rooms', roomId));
-  const currentScore = roomSnap.data()?.players?.[drawerId]?.score || 0;
   await updateDoc(doc(db, 'rooms', roomId), {
-    [`players.${drawerId}.score`]: currentScore + bonus,
+    [`players.${drawerId}.score`]: increment(bonus), // ← atomic increment, no race condition
   });
 };
 
@@ -225,28 +232,45 @@ export const pushStroke = async (roomId, stroke) => {
   await push(strokesRef, stroke);
 };
 
+// Live stroke: the in-progress stroke from the current drawer (overwritten on each move)
+export const setLiveStroke = (roomId, stroke) => {
+  const liveRef = ref(rtdb, `canvas/${roomId}/live`);
+  set(liveRef, stroke); // fire-and-forget, no await needed for low-latency feel
+};
+
+export const clearLiveStroke = async (roomId) => {
+  await set(ref(rtdb, `canvas/${roomId}/live`), null);
+};
+
 export const clearCanvas = async (roomId) => {
   const canvasRef = ref(rtdb, `canvas/${roomId}`);
   await set(canvasRef, { cleared: Date.now() });
 };
 
-export const listenCanvas = (roomId, onStroke, onClear) => {
+export const listenCanvas = (roomId, onStrokes, onClear, onLive) => {
   const strokesRef = ref(rtdb, `canvas/${roomId}/strokes`);
   const clearedRef = ref(rtdb, `canvas/${roomId}/cleared`);
+  const liveRef    = ref(rtdb, `canvas/${roomId}/live`);
 
   onValue(strokesRef, (snap) => {
     const val = snap.val();
-    if (val) onStroke(Object.values(val));
-    else onStroke([]);
+    onStrokes(val ? Object.values(val) : []);
   });
 
   onValue(clearedRef, (snap) => {
     if (snap.val()) onClear();
   });
 
+  if (onLive) {
+    onValue(liveRef, (snap) => {
+      onLive(snap.val() || null);
+    });
+  }
+
   return () => {
     off(strokesRef);
     off(clearedRef);
+    if (onLive) off(liveRef);
   };
 };
 

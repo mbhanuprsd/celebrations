@@ -7,6 +7,8 @@ import ReplayIcon from '@mui/icons-material/Replay';
 
 import { useGameContext } from '../../context/GameContext';
 import { useRoom } from '../../hooks/useRoom';
+import { useGameGuard } from '../../hooks/useGameSession';
+import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI';
 import { LudoBoard } from './LudoBoard';
 import { LudoDice } from './LudoDice';
 import { rollDice, movePiece, resetLudoGame } from './ludoFirebaseService';
@@ -156,6 +158,10 @@ export function LudoGame() {
   const [actionPending, setActionPending] = useState(false);
   const [logOpen, setLogOpen]             = useState(false);
 
+  const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({
+    roomId, userId, gameType: 'ludo', leaveCallback: leave,
+  });
+
   const ls         = room?.ludoState;
   const myColor    = ls?.colorMap?.[userId];
   const isMyTurn   = ls?.currentTurn === myColor;
@@ -200,14 +206,17 @@ export function LudoGame() {
     <Box sx={{
       height: '100dvh',
       display: 'flex', flexDirection: 'column',
-      bgcolor: '#0d1117', overflow: 'hidden',
+      bgcolor: '#0d1117', overflow: 'hidden', position: 'relative',
     }}>
+
+      <OfflineBanner online={online} />
 
       {/* ── Top bar — 38px ── */}
       <Box sx={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        px: 1.5, height: 38,
+        px: 1.5, height: 38, mt: !online ? '36px' : 0,
         bgcolor: '#161b22', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
+        transition: 'margin 0.3s',
       }}>
         <Typography sx={{
           fontFamily: '"Fredoka One", cursive', fontSize: '1.1rem',
@@ -230,7 +239,7 @@ export function LudoGame() {
             onClick={() => { navigator.clipboard.writeText(roomId); notify('Copied!'); }}
             sx={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 2, cursor: 'pointer',
               height: 20, bgcolor: 'rgba(255,255,255,0.05)', color: '#8b949e', fontSize: '0.62rem' }} />
-          <IconButton size="small" onClick={leave} sx={{ color: '#EF233C', p: 0.3 }}>
+          <IconButton size="small" onClick={requestLeave} sx={{ color: '#EF233C', p: 0.3 }}>
             <ExitToAppIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Box>
@@ -323,6 +332,8 @@ export function LudoGame() {
 
       {/* ── Game log drawer ── */}
       <GameLogDrawer chat={chat} open={logOpen} onClose={() => setLogOpen(false)} />
+
+      <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
     </Box>
   );
 }

@@ -11,7 +11,6 @@ import LoginIcon from '@mui/icons-material/Login';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import LogoutIcon from '@mui/icons-material/Logout';
 import GroupIcon from '@mui/icons-material/Group';
-import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
@@ -19,6 +18,8 @@ import { useGameContext } from '../context/GameContext';
 import { GAME_META } from '../core/GameEngine';
 import { listenActiveGames } from '../firebase/services';
 import { useState as useStateInner, useEffect } from 'react';
+import { getStoredSession } from '../hooks/useGameSession';
+import { ResumeBanner } from './GameSharedUI';
 
 const GAME_GRADIENTS = {
   drawing: 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',
@@ -377,6 +378,7 @@ export function HomeScreen() {
   const [slSettings, setSlSettings] = useState({ maxPlayers: 4 });
   const [unoSettings, setUnoSettings] = useState({ maxPlayers: 6 });
   const [localError, setLocalError] = useState('');
+  const [resumeSession, setResumeSession] = useState(getStoredSession);
 
   const meta = GAME_META[gameType];
 
@@ -394,6 +396,12 @@ export function HomeScreen() {
     setLocalError('');
     const ok = await join(roomCode.trim(), playerName);
     if (!ok) setLocalError(state.error || 'Could not join room');
+  };
+
+  const handleResume = async ({ roomId }) => {
+    setResumeSession(null);
+    const ok = await join(roomId, playerName);
+    if (!ok) setLocalError(state.error || 'Could not rejoin room');
   };
 
   return (
@@ -454,6 +462,14 @@ export function HomeScreen() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Resume session banner */}
+        {resumeSession && !state.roomId && (
+          <ResumeBanner
+            onResume={handleResume}
+            onDismiss={() => setResumeSession(null)}
+          />
+        )}
 
         {/* Main card */}
         <Card sx={{
