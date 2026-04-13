@@ -648,9 +648,14 @@ export function HomeScreen() {
                   <Box>
                     <Typography sx={{ color: '#484f58', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Playing as</Typography>
                     <Typography sx={{ color: '#4CC9F0', fontWeight: 900, fontSize: '0.95rem', lineHeight: 1.1 }}>{playerName}</Typography>
+                    {state.userEmail && (
+                      <Typography sx={{ color: '#2a3848', fontSize: '0.56rem', lineHeight: 1.1, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {state.userEmail}
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
-                <Tooltip title="Change Name">
+                <Tooltip title="Sign Out">
                   <IconButton size="small" onClick={logout} sx={{
                     color: '#8b949e', bgcolor: 'rgba(255,255,255,0.04)',
                     border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', p: 0.7,

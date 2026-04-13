@@ -9,15 +9,36 @@ import {
 import {
   ref, set, onValue, off, push, onDisconnect, serverTimestamp as rtServerTimestamp, remove
 } from 'firebase/database';
-import { signInAnonymously } from 'firebase/auth';
+import {
+  signInWithPopup, GoogleAuthProvider, signOut
+} from 'firebase/auth';
 import { db, rtdb, auth } from './index';
 import { nanoid } from 'nanoid';
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
-export const signInAnon = () => signInAnonymously(auth);
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
+export const signOutUser = () => signOut(auth);
 export const getCurrentUser = () => auth.currentUser;
+
+/**
+ * Check if a display name is taken by any user OTHER than `excludeUid`.
+ */
+export const checkNameAvailableForUid = (name, excludeUid) => {
+  return new Promise((resolve) => {
+    const usersRef = ref(rtdb, 'onlineUsers');
+    onValue(usersRef, (snap) => {
+      const val = snap.val() || {};
+      const taken = Object.values(val).some(
+        u => u.uid !== excludeUid && u.name?.toLowerCase() === name.toLowerCase()
+      );
+      resolve(!taken);
+    }, { onlyOnce: true });
+  });
+};
 
 // ─── Room Management ───────────────────────────────────────────────────────
 
