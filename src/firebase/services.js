@@ -536,6 +536,32 @@ export const getUserGameHistory = async (uid, limitCount = 15) => {
   }
 };
 
+// ─── Global Chat ────────────────────────────────────────────────────────────
+
+export const sendGlobalMessage = async (userId, playerName, text) => {
+  if (!userId || !text?.trim()) return;
+  await addDoc(collection(db, 'globalChat'), {
+    userId,
+    name: playerName,
+    text: text.trim(),
+    timestamp: serverTimestamp(),
+  });
+};
+
+export const listenGlobalChat = (callback) => {
+  const q = query(
+    collection(db, 'globalChat'),
+    orderBy('timestamp', 'desc'),
+    limit(80)
+  );
+  return onSnapshot(q, (snap) => {
+    const msgs = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .reverse();
+    callback(msgs);
+  });
+};
+
 export const listenActiveGames = (callback) => {
   const q = query(
     collection(db, 'rooms'),

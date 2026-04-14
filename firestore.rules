@@ -31,5 +31,15 @@ service cloud.firestore {
     match /users/{uid}/gameHistory/{docId} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+
+    // Global chat: any authenticated user can read and create messages
+    match /globalChat/{msgId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 300;
+    }
   }
 }
