@@ -2,9 +2,7 @@
   "rules": {
     "canvas": {
       "$roomId": {
-        // Anyone authenticated can read canvas data
         ".read": "auth != null",
-        // Only write if authenticated
         ".write": "auth != null"
       }
     },
@@ -14,12 +12,17 @@
         ".write": "auth != null"
       }
     },
+    "onlineUsers": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
     "presence": {
       "$roomId": {
-        "$userId": {
+        "$uid": {
           ".read": "auth != null",
-          // Users can only write their own presence
-          ".write": "auth != null && auth.uid == $userId"
+          ".write": "auth != null && auth.uid === $uid"
         }
       }
     }

@@ -609,17 +609,53 @@ function GamesPanel({ playerName, onLocalError, localError }) {
 
 // ─── Global Chat Panel ────────────────────────────────────────────────────────
 
+// ── helpers used only inside chat ──────────────────────────────────────────
+function getDateLabel(ts) {
+  if (!ts) return null;
+  const ms   = ts.toMillis ? ts.toMillis() : (typeof ts === 'number' ? ts : null);
+  if (!ms) return null;
+  const d    = new Date(ms);
+  const now  = new Date();
+  const diff = Math.floor((now - d) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+function isSameDay(tsA, tsB) {
+  const toMs = t => t?.toMillis ? t.toMillis() : (typeof t === 'number' ? t : null);
+  const a = toMs(tsA), b = toMs(tsB);
+  if (!a || !b) return false;
+  const da = new Date(a), db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function ChatTick({ double = false, read = false }) {
+  const color = read ? '#4CC9F0' : 'rgba(255,255,255,0.55)';
+  return (
+    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', ml: 0.4, verticalAlign: 'middle' }}>
+      <svg width={double ? 16 : 10} height={10} viewBox={double ? '0 0 16 10' : '0 0 10 10'}>
+        <polyline points="1,5 4,8 9,1" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        {double && <polyline points="7,5 10,8 15,1" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />}
+      </svg>
+    </Box>
+  );
+}
+
 function GlobalChatPanel({ userId, playerName }) {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const bottomRef = useRef(null);
+  const [messages, setMessages]   = useState([]);
+  const [input,    setInput]      = useState('');
+  const [sending,  setSending]    = useState(false);
+  const { count: onlineCount }    = useOnlineUsers();
+  const bottomRef  = useRef(null);
+  const inputRef   = useRef(null);
 
   useEffect(() => {
     const unsub = listenGlobalChat(setMessages);
     return unsub;
   }, []);
 
+  // Scroll to bottom on new messages, but only if already near bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -629,6 +665,7 @@ function GlobalChatPanel({ userId, playerName }) {
     if (!text || sending) return;
     setSending(true);
     setInput('');
+    inputRef.current?.focus();
     try { await sendGlobalMessage(userId, playerName, text); }
     catch (e) { console.error(e); }
     finally { setSending(false); }
@@ -640,114 +677,305 @@ function GlobalChatPanel({ userId, playerName }) {
     return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Pre-process: figure out first/last of each run for tail rendering
+  const processed = messages.map((msg, i) => {
+    const prev = messages[i - 1];
+    const next = messages[i + 1];
+    const isFirstOfRun = !prev || prev.userId !== msg.userId || !isSameDay(prev.timestamp, msg.timestamp);
+    const isLastOfRun  = !next || next.userId !== msg.userId || !isSameDay(next.timestamp, msg.timestamp);
+    const showDateSep  = !prev || !isSameDay(prev.timestamp, msg.timestamp);
+    return { ...msg, isFirstOfRun, isLastOfRun, showDateSep };
+  });
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 120px)', minHeight: 0 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, pb: 1.5, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <Box sx={{ width: 38, height: 38, borderRadius: '12px', background: 'linear-gradient(135deg, #F72585, #7209B7)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(247,37,133,0.4)', flexShrink: 0 }}>
-          <ChatIcon sx={{ fontSize: 18, color: 'white' }} />
+    // Full-height container that bleeds to page edges (negative mx to cancel parent padding)
+    <Box sx={{
+      display: 'flex', flexDirection: 'column',
+      height: 'calc(100dvh - 80px)',
+      mx: { xs: -1.5, sm: -2 },       // cancel parent horizontal padding
+      borderRadius: '0 0 22px 22px',
+      overflow: 'hidden',
+      position: 'relative',
+    }}>
+
+      {/* ── WhatsApp-style header bar ───────────────────────────────────── */}
+      <Box sx={{
+        display: 'flex', alignItems: 'center', gap: 1.2,
+        px: 2, py: 1.2,
+        background: 'rgba(14,18,27,0.96)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        flexShrink: 0,
+        zIndex: 2,
+      }}>
+        {/* Group avatar */}
+        <Box sx={{
+          width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+          background: 'linear-gradient(135deg, #F72585 0%, #7209B7 100%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 0 0 2px rgba(247,37,133,0.3)',
+          fontSize: '1.2rem',
+        }}>
+          🌐
         </Box>
-        <Box>
-          <Typography sx={{ fontWeight: 900, fontSize: '0.95rem', color: '#e6edf3' }}>Global Chat</Typography>
-          <Box display="flex" alignItems="center" gap={0.5}>
-            <motion.div animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1.5, repeat: Infinity }}>
-              <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: '#22C55E' }} />
+
+        {/* Name + online */}
+        <Box flex={1} minWidth={0}>
+          <Typography sx={{ fontWeight: 900, fontSize: '0.95rem', color: '#e6edf3', lineHeight: 1.2 }}>
+            Global Chat
+          </Typography>
+          <Box display="flex" alignItems="center" gap={0.6}>
+            <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }}>
+              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#22C55E', boxShadow: '0 0 5px #22C55E' }} />
             </motion.div>
-            <Typography sx={{ fontSize: '0.62rem', color: '#484f58', fontWeight: 600 }}>Everyone online</Typography>
+            <Typography sx={{ fontSize: '0.65rem', color: '#22C55E', fontWeight: 700 }}>
+              {onlineCount} online
+            </Typography>
           </Box>
         </Box>
       </Box>
 
-      {/* Message list */}
+      {/* ── Chat wallpaper + messages ────────────────────────────────────── */}
       <Box sx={{
-        flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0.5, pr: 0.5,
-        '&::-webkit-scrollbar': { width: 4 },
-        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 2 },
+        flex: 1, overflowY: 'auto', position: 'relative',
+        // subtle dot-grid wallpaper like WhatsApp
+        bgcolor: '#0a0f1a',
+        backgroundImage: [
+          'radial-gradient(circle, rgba(76,201,240,0.06) 1px, transparent 1px)',
+        ].join(','),
+        backgroundSize: '22px 22px',
+        px: 1.5, py: 1,
+        '&::-webkit-scrollbar': { width: 3 },
+        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2 },
       }}>
+
+        {/* Empty state */}
         {messages.length === 0 && (
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, py: 8, opacity: 0.5 }}>
-            <Typography sx={{ fontSize: '2.5rem' }}>💬</Typography>
-            <Typography sx={{ color: '#484f58', fontSize: '0.82rem', fontWeight: 700 }}>No messages yet</Typography>
-            <Typography sx={{ color: '#30404f', fontSize: '0.7rem' }}>Say hello to everyone!</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 1.2, opacity: 0.45 }}>
+            <Box sx={{
+              width: 64, height: 64, borderRadius: '50%',
+              background: 'linear-gradient(135deg, #F72585, #7209B7)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.8rem',
+            }}>💬</Box>
+            <Typography sx={{ color: '#8b949e', fontSize: '0.85rem', fontWeight: 800 }}>No messages yet</Typography>
+            <Typography sx={{ color: '#484f58', fontSize: '0.72rem' }}>Be the first to say hello 👋</Typography>
           </Box>
         )}
-        {messages.map((msg, i) => {
-          const mine = msg.userId === userId;
+
+        {/* Messages */}
+        {processed.map((msg) => {
+          const mine  = msg.userId === userId;
           const color = nameColor(msg.name);
-          const prev = messages[i - 1];
-          const sameUser = prev?.userId === msg.userId;
+
           return (
-            <motion.div key={msg.id} initial={{ opacity: 0, y: 6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}>
-              <Box sx={{ display: 'flex', flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: 0.8, mt: sameUser ? 0.2 : 0.9 }}>
-                {!mine && (
-                  <Box sx={{ width: 26, flexShrink: 0, mb: 0.5 }}>
-                    {!sameUser && (
-                      <Avatar sx={{ width: 26, height: 26, bgcolor: color, fontSize: '0.6rem', fontWeight: 900 }}>
-                        {(msg.name || '?').slice(0, 2).toUpperCase()}
-                      </Avatar>
-                    )}
-                  </Box>
-                )}
-                <Box sx={{ maxWidth: '74%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
-                  {!sameUser && !mine && (
-                    <Box display="flex" alignItems="center" gap={0.7} mb={0.3} ml={0.3}>
-                      <Typography sx={{ fontSize: '0.62rem', fontWeight: 800, color }}>{msg.name}</Typography>
-                      <Typography sx={{ fontSize: '0.55rem', color: '#30404f' }}>{formatTime(msg.timestamp)}</Typography>
-                    </Box>
-                  )}
+            <React.Fragment key={msg.id}>
+              {/* Date separator pill */}
+              {msg.showDateSep && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', my: 1.5 }}>
                   <Box sx={{
-                    px: 1.4, py: 0.75,
-                    borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                    background: mine ? 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)' : 'rgba(255,255,255,0.07)',
-                    border: mine ? 'none' : '1px solid rgba(255,255,255,0.09)',
-                    boxShadow: mine ? '0 4px 16px rgba(76,201,240,0.22)' : 'none',
+                    px: 1.6, py: 0.35, borderRadius: '12px',
+                    bgcolor: 'rgba(14,18,27,0.82)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    backdropFilter: 'blur(8px)',
                   }}>
-                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, lineHeight: 1.45, color: mine ? 'white' : '#c9d1d9', wordBreak: 'break-word' }}>
-                      {msg.text}
+                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: '#8b949e', letterSpacing: '0.04em' }}>
+                      {getDateLabel(msg.timestamp)}
                     </Typography>
                   </Box>
-                  {mine && (
-                    <Typography sx={{ fontSize: '0.54rem', color: '#30404f', mt: 0.2, mr: 0.3 }}>{formatTime(msg.timestamp)}</Typography>
-                  )}
                 </Box>
+              )}
+
+              {/* Row */}
+              <Box sx={{
+                display: 'flex',
+                flexDirection: mine ? 'row-reverse' : 'row',
+                alignItems: 'flex-end',
+                gap: 0.7,
+                mb: msg.isLastOfRun ? 0.9 : 0.25,
+                px: 0.5,
+              }}>
+                {/* Avatar — only show at end of other's run */}
+                {!mine && (
+                  <Box sx={{ width: 28, flexShrink: 0, alignSelf: 'flex-end', mb: 0.25 }}>
+                    {msg.isLastOfRun ? (
+                      <Avatar sx={{ width: 28, height: 28, bgcolor: color, fontSize: '0.6rem', fontWeight: 900, boxShadow: `0 0 0 2px ${color}30` }}>
+                        {(msg.name || '?').slice(0, 2).toUpperCase()}
+                      </Avatar>
+                    ) : null}
+                  </Box>
+                )}
+
+                {/* Bubble */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.92, y: 6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+                  style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}
+                >
+                  {/* Sender name (first of their run, not mine) */}
+                  {!mine && msg.isFirstOfRun && (
+                    <Typography sx={{ fontSize: '0.67rem', fontWeight: 800, color, mb: 0.3, ml: 1.2 }}>
+                      {msg.name}
+                    </Typography>
+                  )}
+
+                  {/* The bubble itself */}
+                  <Box sx={{
+                    position: 'relative',
+                    px: 1.3, pt: 0.75, pb: 0.5,
+                    borderRadius: mine
+                      ? msg.isLastOfRun ? '18px 18px 4px 18px' : '18px'
+                      : msg.isLastOfRun ? '18px 18px 18px 4px' : '18px',
+
+                    // Mine: themed gradient; others: dark card
+                    background: mine
+                      ? 'linear-gradient(135deg, #1a5f7a 0%, #2d1b69 100%)'
+                      : 'rgba(22,28,40,0.95)',
+                    border: mine
+                      ? '1px solid rgba(76,201,240,0.25)'
+                      : '1px solid rgba(255,255,255,0.08)',
+                    boxShadow: mine
+                      ? '0 2px 12px rgba(76,201,240,0.15)'
+                      : '0 2px 8px rgba(0,0,0,0.3)',
+
+                    // Tail using CSS clip on the last bubble of a run
+                    ...(msg.isLastOfRun && mine && {
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        bottom: 0,
+                        right: -6,
+                        width: 0, height: 0,
+                        borderStyle: 'solid',
+                        borderWidth: '0 0 10px 8px',
+                        borderColor: 'transparent transparent rgba(76,201,240,0.25) transparent',
+                      },
+                      '&::before': {
+                        content: '""',
+                        position: 'absolute',
+                        bottom: 1,
+                        right: -5,
+                        width: 0, height: 0,
+                        borderStyle: 'solid',
+                        borderWidth: '0 0 9px 7px',
+                        borderColor: 'transparent transparent #2d1b69 transparent',
+                        zIndex: 1,
+                      },
+                    }),
+                    ...(msg.isLastOfRun && !mine && {
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        bottom: 0,
+                        left: -6,
+                        width: 0, height: 0,
+                        borderStyle: 'solid',
+                        borderWidth: '0 8px 10px 0',
+                        borderColor: 'transparent rgba(255,255,255,0.08) transparent transparent',
+                      },
+                      '&::before': {
+                        content: '""',
+                        position: 'absolute',
+                        bottom: 1,
+                        left: -4,
+                        width: 0, height: 0,
+                        borderStyle: 'solid',
+                        borderWidth: '0 6px 9px 0',
+                        borderColor: 'transparent rgba(22,28,40,0.95) transparent transparent',
+                        zIndex: 1,
+                      },
+                    }),
+                  }}>
+                    {/* Message text */}
+                    <Typography sx={{
+                      fontSize: '0.87rem', fontWeight: 500, lineHeight: 1.5,
+                      color: mine ? '#dff3fb' : '#c9d1d9',
+                      wordBreak: 'break-word',
+                      pr: 5,  // space for timestamp
+                    }}>
+                      {msg.text}
+                    </Typography>
+
+                    {/* Timestamp + tick — bottom right inside bubble */}
+                    <Box sx={{
+                      position: 'absolute', bottom: 5, right: 9,
+                      display: 'flex', alignItems: 'center', gap: 0.3,
+                    }}>
+                      <Typography sx={{ fontSize: '0.58rem', color: mine ? 'rgba(223,243,251,0.5)' : 'rgba(139,148,158,0.7)', lineHeight: 1, whiteSpace: 'nowrap' }}>
+                        {formatTime(msg.timestamp)}
+                      </Typography>
+                      {mine && <ChatTick double read />}
+                    </Box>
+                  </Box>
+                </motion.div>
               </Box>
-            </motion.div>
+            </React.Fragment>
           );
         })}
+
         <div ref={bottomRef} />
       </Box>
 
-      {/* Input */}
-      <Box sx={{ mt: 1.5, display: 'flex', gap: 1, alignItems: 'flex-end', pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-        <TextField
-          fullWidth multiline maxRows={3}
-          placeholder="Message everyone…"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          inputProps={{ maxLength: 300 }}
-          sx={{
-            '& .MuiInputBase-root': {
-              borderRadius: '16px', bgcolor: 'rgba(255,255,255,0.05)', color: '#e6edf3', fontSize: '0.85rem',
-              '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-              '&:hover fieldset': { borderColor: 'rgba(247,37,133,0.35)' },
-              '&.Mui-focused fieldset': { borderColor: '#F72585', borderWidth: 1.5 },
-            },
-            '& .MuiInputBase-input::placeholder': { color: '#484f58', opacity: 1 },
-          }}
-        />
-        <motion.div whileTap={{ scale: 0.9 }}>
-          <IconButton onClick={handleSend} disabled={!input.trim() || sending}
+      {/* ── Input bar ────────────────────────────────────────────────────── */}
+      <Box sx={{
+        display: 'flex', alignItems: 'flex-end', gap: 1,
+        px: 1.5, py: 1.2,
+        background: 'rgba(14,18,27,0.96)',
+        backdropFilter: 'blur(20px)',
+        borderTop: '1px solid rgba(255,255,255,0.07)',
+        flexShrink: 0,
+      }}>
+        {/* Text input — pill-shaped like WhatsApp */}
+        <Box sx={{
+          flex: 1, display: 'flex', alignItems: 'flex-end',
+          bgcolor: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '24px',
+          px: 1.8, py: 0.6,
+          transition: 'border-color 0.2s',
+          '&:focus-within': { borderColor: 'rgba(247,37,133,0.5)' },
+        }}>
+          <TextField
+            inputRef={inputRef}
+            fullWidth multiline maxRows={4}
+            placeholder="Type a message…"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            inputProps={{ maxLength: 300 }}
+            variant="standard"
             sx={{
-              width: 44, height: 44, flexShrink: 0, borderRadius: '14px',
-              background: input.trim() ? 'linear-gradient(135deg, #F72585, #7209B7)' : 'rgba(255,255,255,0.06)',
-              color: input.trim() ? 'white' : '#484f58',
-              boxShadow: input.trim() ? '0 4px 16px rgba(247,37,133,0.35)' : 'none',
+              '& .MuiInputBase-root': {
+                color: '#e6edf3', fontSize: '0.9rem', lineHeight: 1.5,
+                '&:before': { display: 'none' },
+                '&:after':  { display: 'none' },
+              },
+              '& .MuiInputBase-input::placeholder': { color: '#484f58', opacity: 1 },
+            }}
+          />
+        </Box>
+
+        {/* Send button */}
+        <motion.div whileTap={{ scale: 0.88 }} whileHover={{ scale: 1.05 }}>
+          <Box
+            onClick={handleSend}
+            sx={{
+              width: 46, height: 46, flexShrink: 0, borderRadius: '50%',
+              background: input.trim()
+                ? 'linear-gradient(135deg, #F72585 0%, #7209B7 100%)'
+                : 'rgba(255,255,255,0.07)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: input.trim() ? 'pointer' : 'default',
+              boxShadow: input.trim() ? '0 4px 18px rgba(247,37,133,0.4)' : 'none',
               transition: 'all 0.2s',
-              '&.Mui-disabled': { background: 'rgba(255,255,255,0.04)', color: '#30404f' },
-            }}>
-            {sending ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
-          </IconButton>
+            }}
+          >
+            {sending
+              ? <CircularProgress size={18} sx={{ color: 'rgba(255,255,255,0.6)' }} />
+              : <SendIcon sx={{ fontSize: 19, color: input.trim() ? 'white' : '#484f58', ml: '2px', transition: 'color 0.2s' }} />
+            }
+          </Box>
         </motion.div>
       </Box>
     </Box>
