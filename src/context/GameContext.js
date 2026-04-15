@@ -96,11 +96,6 @@ export function GameProvider({ children }) {
 
   // ── Auth listener ──────────────────────────────────────────────────────────
   useEffect(() => {
-    // Handle the result when Firebase redirects back after Google sign-in
-    getGoogleRedirectResult().catch(() => {
-      // Ignore errors here — onAuthStateChanged handles the actual auth state
-    });
-
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const firstName = extractFullName(user);
@@ -120,12 +115,14 @@ export function GameProvider({ children }) {
               dispatch({ type: 'SET_ROOM_ID', roomId: session.roomId });
               // Session stays active (room listener will keep it refreshed)
               // Don't clearSession here — it will be refreshed by useGameGuard
-            } catch {
+            } catch (e) {
+              console.error('Auto-rejoin failed:', e);
               // Room is gone or we were kicked — clear the stale session silently
               clearSession();
             }
           }
-        } catch {
+        } catch (e) {
+          console.error('User setup failed:', e);
           // Auth is ready but setup failed — LoginScreen will show
         }
       } else {
