@@ -1,7 +1,7 @@
 // src/context/GameContext.js
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import {
-  signInWithGoogle, getGoogleRedirectResult, signOutUser, listenRoom, listenChat,
+  signInWithGoogle, signOutUser, listenRoom, listenChat,
   setUserOnline, removeUserOnline, checkNameAvailableForUid, joinRoom,
   updatePlayerNameInRoom,
 } from '../firebase/services';

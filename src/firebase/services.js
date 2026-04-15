@@ -3,7 +3,7 @@
 
 import {
   doc, collection, setDoc, updateDoc, onSnapshot, deleteDoc,
-  serverTimestamp, deleteField, arrayUnion, getDoc, query, where, limit,
+  serverTimestamp, deleteField, getDoc, query, where, limit,
   increment, orderBy, getDocs, addDoc
 } from 'firebase/firestore';
 import {

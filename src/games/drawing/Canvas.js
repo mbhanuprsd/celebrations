@@ -1,5 +1,5 @@
 // src/games/drawing/Canvas.js — Drawize-style mobile-first canvas
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Box, IconButton, Tooltip, Slider } from '@mui/material';
 import { motion } from 'framer-motion';
 import UndoIcon from '@mui/icons-material/Undo';

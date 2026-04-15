@@ -3,7 +3,7 @@ import { GameEngine } from '../../core/GameEngine';
 import {
   startGame, selectWord, advanceRound, endRound, getWordChoices,
   sendSystemMessage, recordCorrectGuess, updateDrawerScore,
-  revealHintCharacter, clearCanvas, clearChat
+  clearCanvas, clearChat
 } from '../../firebase/services';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -69,6 +69,11 @@ export class DrawingGameEngine extends GameEngine {
     const { playerOrder, drawerIndex, currentRound, settings } = this.room;
     await endRound(this.roomId);
     
+    // Instead of a simple setTimeout, we use a state-based approach in the UI 
+    // but the engine still needs to trigger the advance.
+    // To make it more robust against refreshes, we could move this to a 
+    // Firebase function, but for now, we'll keep the delay and ensure 
+    // the UI handles the "Round End" state.
     setTimeout(async () => {
       const continued = await advanceRound(
         this.roomId, playerOrder, drawerIndex,
