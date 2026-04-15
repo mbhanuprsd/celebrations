@@ -1,30 +1,6 @@
 {
   "rules": {
-    "canvas": {
-      "$roomId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
-      }
-    },
-    "chat": {
-      "$roomId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
-      }
-    },
-    "onlineUsers": {
-      "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid"
-      }
-    },
-    "presence": {
-      "$roomId": {
-        "$uid": {
-          ".read": "auth != null",
-          ".write": "auth != null && auth.uid === $uid"
-        }
-      }
-    }
+    ".read": true,
+    ".write": true
   }
 }
