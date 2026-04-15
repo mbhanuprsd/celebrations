@@ -66,7 +66,8 @@ function extractFullName(user) {
   if (user.email) {
     return user.email.split('@')[0].replace(/[^A-Za-z0-9]/g, '');
   }
-  return 'Player';
+  // Fallback for anonymous users: a generic name that resolveUniqueName will make unique
+  return 'Guest';
 }
 
 /** Find a unique display name for the user: first name, then FirstName2, FirstName3 … */
