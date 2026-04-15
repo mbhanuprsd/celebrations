@@ -297,7 +297,7 @@ export function UnoGame() {
 
   const posSlots = ['top','right','left','topRight','topLeft'];
   const activeColorMeta = u.activeColor ? C[u.activeColor] : null;
-  const cardGap = myHand.length > 10 ? -14 : myHand.length > 7 ? -6 : 4;
+  const cardGap = 4;
 
   return (
     <Box sx={{ height:'100dvh', background:'linear-gradient(160deg,#0d2137 0%,#071424 100%)', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative', userSelect:'none' }}>
@@ -411,13 +411,11 @@ export function UnoGame() {
           )}
         </Box>
         {/* Hand */}
-        <Box sx={{ display:'flex', gap:`${cardGap}px`, px:1.8, pb:1.5, overflowX:'auto', scrollbarWidth:'none', '&::-webkit-scrollbar':{display:'none'}, alignItems:'flex-end', minHeight:96 }}>
+        <Box sx={{ display:'flex', flexWrap:'wrap', gap:`${cardGap}px`, px:1.8, pb:1.5, overflow:'hidden', alignItems:'center', justifyContent:'center', minHeight:96 }}>
           {myHand.map((card, i) => {
             const isPlayable = playableIds.has(card.id) && !busy && isMyTurn;
-            const arcAngle = myHand.length>1 ? ((i-(myHand.length-1)/2)/(myHand.length-1))*8 : 0;
-            const arcY = myHand.length>1 ? Math.abs(i-(myHand.length-1)/2)*1.5 : 0;
             return (
-              <motion.div key={card.id} initial={{ y:50, opacity:0 }} animate={{ y:arcY, opacity:1 }} transition={{ delay:i*0.025, type:'spring', stiffness:300, damping:24 }} style={{ flexShrink:0, rotate:`${arcAngle}deg` }}>
+              <motion.div key={card.id} initial={{ y:50, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:i*0.025, type:'spring', stiffness:300, damping:24 }} style={{ flexShrink:0 }}>
                 <UnoCard card={card} size="md" playable={isPlayable} onClick={() => handlePlay(card)} />
               </motion.div>
             );

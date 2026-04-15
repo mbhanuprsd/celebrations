@@ -1,7 +1,7 @@
 // src/context/GameContext.js
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import {
-  signInWithGoogle, signOutUser, listenRoom, listenChat,
+  signInWithGoogle, getGoogleRedirectResult, signOutUser, listenRoom, listenChat,
   setUserOnline, removeUserOnline, checkNameAvailableForUid, joinRoom,
   updatePlayerNameInRoom,
 } from '../firebase/services';
@@ -96,6 +96,11 @@ export function GameProvider({ children }) {
 
   // ── Auth listener ──────────────────────────────────────────────────────────
   useEffect(() => {
+    // Handle the result when Firebase redirects back after Google sign-in
+    getGoogleRedirectResult().catch(() => {
+      // Ignore errors here — onAuthStateChanged handles the actual auth state
+    });
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const firstName = extractFullName(user);
@@ -175,19 +180,16 @@ export function GameProvider({ children }) {
     dispatch({ type: 'SET_PLAYER_NAME', name: trimmed });
   };
 
-  /** Trigger Google sign-in popup — called from LoginScreen */
+  /** Trigger Google sign-in redirect — called from LoginScreen */
   const loginWithGoogle = async () => {
     dispatch({ type: 'SET_LOADING', value: true });
     dispatch({ type: 'SET_ERROR', error: null });
     try {
       await signInWithGoogle();
-      // onAuthStateChanged fires automatically after this and handles the rest
+      // Page will redirect to Google — onAuthStateChanged fires when it comes back
     } catch (err) {
-      const msg = err.code === 'auth/popup-closed-by-user'
-        ? 'Sign-in cancelled'
-        : err.message || 'Sign-in failed';
+      const msg = err.message || 'Sign-in failed';
       dispatch({ type: 'SET_ERROR', error: msg });
-    } finally {
       dispatch({ type: 'SET_LOADING', value: false });
     }
   };
