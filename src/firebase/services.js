@@ -10,7 +10,7 @@ import {
   ref, set, onValue, off, push, onDisconnect, serverTimestamp as rtServerTimestamp, remove
 } from 'firebase/database';
 import {
-  signInWithPopup, getRedirectResult, GoogleAuthProvider, signOut
+  signInWithPopup, getRedirectResult, GoogleAuthProvider, signOut, signInAnonymously
 } from 'firebase/auth';
 import { db, rtdb, auth } from './index';
 import { nanoid } from 'nanoid';
@@ -21,6 +21,7 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
+export const signInAnonymouslyUser = () => signInAnonymously(auth);
 export const getGoogleRedirectResult = () => getRedirectResult(auth);
 export const signOutUser = () => signOut(auth);
 export const getCurrentUser = () => auth.currentUser;

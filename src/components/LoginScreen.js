@@ -1,6 +1,6 @@
 // src/components/LoginScreen.js
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Button, CircularProgress, Alert, Chip } from '@mui/material';
+import { Box, Typography, Button, CircularProgress, Alert, Chip, Divider } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameContext } from '../context/GameContext';
 import { listenOnlineUsers } from '../firebase/services';
@@ -44,7 +44,7 @@ function GoogleLogo() {
 }
 
 export function LoginScreen() {
-  const { state, loginWithGoogle } = useGameContext();
+  const { state, loginWithGoogle, loginAnonymously } = useGameContext();
   const [onlineUsers, setOnlineUsers] = useState([]);
 
   useEffect(() => {
@@ -54,6 +54,7 @@ export function LoginScreen() {
   }, [state.isAuthReady]);
 
   const handleSignIn = () => loginWithGoogle();
+  const handleAnonSignIn = () => loginAnonymously();
 
   return (
     <Box sx={{
@@ -160,6 +161,29 @@ export function LoginScreen() {
             }}
           >
             {state.isLoading ? 'Signing in…' : 'Continue with Google'}
+          </Button>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, my: 2 }}>
+            <Divider sx={{ flex: 1 }} />
+            <Typography sx={{ fontSize: '0.65rem', color: '#484f58', fontWeight: 700 }}>OR</Typography>
+            <Divider sx={{ flex: 1 }} />
+          </Box>
+
+          <Button
+            fullWidth
+            variant="outlined"
+            onClick={handleAnonSignIn}
+            disabled={state.isLoading}
+            sx={{
+              py: 1.5, borderRadius: '14px', fontWeight: 800, fontSize: '0.95rem',
+              borderColor: 'rgba(255,255,255,0.2)', color: '#e6edf3',
+              textTransform: 'none', letterSpacing: 0,
+              '&:hover': { borderColor: 'rgba(255,255,255,0.4)', bgcolor: 'rgba(255,255,255,0.05)' },
+              '&.Mui-disabled': { borderColor: 'rgba(255,255,255,0.08)', color: '#484f58' },
+              transition: 'all 0.2s',
+            }}
+          >
+            {state.isLoading ? 'Signing in…' : 'Play as Guest'}
           </Button>
 
           <Typography sx={{ mt: 2.5, fontSize: '0.66rem', color: '#2a3848', lineHeight: 1.5 }}>

@@ -1,7 +1,7 @@
 // src/context/GameContext.js
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import {
-  signInWithGoogle, signOutUser, listenRoom, listenChat,
+  signInWithGoogle, signInAnonymouslyUser, signOutUser, listenRoom, listenChat,
   setUserOnline, removeUserOnline, checkNameAvailableForUid, joinRoom,
   updatePlayerNameInRoom,
 } from '../firebase/services';
@@ -186,6 +186,19 @@ export function GameProvider({ children }) {
       // Page will redirect to Google — onAuthStateChanged fires when it comes back
     } catch (err) {
       const msg = err.message || 'Sign-in failed';
+      dispatch({ type: 'SET_ERROR', error: msg });
+      dispatch({ type: 'SET_LOADING', value: false });
+    }
+  };
+
+  /** Trigger Anonymous sign-in — called from LoginScreen */
+  const loginAnonymously = async () => {
+    dispatch({ type: 'SET_LOADING', value: true });
+    dispatch({ type: 'SET_ERROR', error: null });
+    try {
+      await signInAnonymouslyUser();
+    } catch (err) {
+      const msg = err.message || 'Anonymous sign-in failed';
       dispatch({ type: 'SET_ERROR', error: msg });
       dispatch({ type: 'SET_LOADING', value: false });
     }

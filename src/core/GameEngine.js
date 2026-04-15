@@ -20,12 +20,14 @@ const DrawingGameEngine = () => import('../games/drawing/DrawingGameEngine');
 const LudoGameEngine = () => import('../games/ludo/LudoGameEngine');
 const SnakeLadderGameEngine = () => import('../games/snakeladder/SnakeLadderGameEngine');
 const UnoGameEngine = () => import('../games/uno/UnoGameEngine');
+const MiniGolfGameEngine = () => import('../games/minigolf/MiniGolfGameEngine');
 
 export const GameRegistry = {
   drawing: DrawingGameEngine,
   ludo: LudoGameEngine,
   snakeladder: SnakeLadderGameEngine,
   uno: UnoGameEngine,
+  minigolf: MiniGolfGameEngine,
 };
 
 export const GAME_META = {
@@ -56,6 +58,13 @@ export const GAME_META = {
     description: 'Match colors and numbers — empty your hand first!',
     minPlayers: 2, maxPlayers: 10,
     defaultSettings: { maxPlayers: 6 },
+  },
+  minigolf: {
+    label: 'Mini Golf',
+    icon: '⛳',
+    description: 'Sink the ball in the fewest strokes!',
+    minPlayers: 2, maxPlayers: 10,
+    defaultSettings: { maxPlayers: 10 },
   },
 };
 
