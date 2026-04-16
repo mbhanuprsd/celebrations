@@ -2,7 +2,7 @@
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
-  COLOR_ORDER, COLOR_START_INDEX, SAFE_CELLS, TOTAL_STEPS,
+  COLOR_ORDER, TOTAL_STEPS,
   assignColors, getMainPathIndex, canCapture
 } from './ludoConstants';
 import { sendSystemMessage } from '../../firebase/services';

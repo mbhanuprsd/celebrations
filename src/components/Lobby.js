@@ -2,8 +2,8 @@
 import React, { useState } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, Chip, Avatar,
-  List, ListItem, ListItemAvatar, ListItemText, IconButton,
-  Tooltip, CircularProgress,
+  List, ListItem, ListItemAvatar, ListItemText,
+  CircularProgress,
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -16,9 +16,10 @@ import { DrawingGameEngine } from '../games/drawing/DrawingGameEngine';
 import { LudoGameEngine } from '../games/ludo/LudoGameEngine';
 import { SnakeLadderGameEngine } from '../games/snakeladder/SnakeLadderGameEngine';
 import { UnoGameEngine } from '../games/uno/UnoGameEngine';
+import { MiniGolfGameEngine } from '../games/minigolf/MiniGolfGameEngine';
 import { GAME_META } from '../core/GameEngine';
 
-const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine };
+const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine, minigolf: MiniGolfGameEngine };
 
 const GAME_GRADIENTS = {
   drawing: 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',

@@ -16,6 +16,7 @@ const STORAGE_KEY = 'celebrations_player_name';
 const initialState = {
   userId:      null,
   userEmail:   null,   // from Google account
+  isAnonymous: false,  // true when signed in as guest
   isAuthReady: false,
   playerName:  null,
   isLoggedIn:  false,
@@ -33,14 +34,15 @@ const initialState = {
 function reducer(state, action) {
   switch (action.type) {
     case 'SET_AUTH':
-      return { ...state, userId: action.userId, userEmail: action.userEmail ?? null, isAuthReady: true };
+      return { ...state, userId: action.userId, userEmail: action.userEmail ?? null,
+               isAnonymous: action.isAnonymous ?? false, isAuthReady: true };
     case 'SET_LOGGED_IN':
       return { ...state, playerName: action.name, isLoggedIn: true };
     case 'SET_PLAYER_NAME':
       return { ...state, playerName: action.name };
     case 'LOGOUT':
       return { ...state, playerName: null, isLoggedIn: false, roomId: null, room: null,
-               userId: null, userEmail: null, isAuthReady: true };
+               userId: null, userEmail: null, isAnonymous: false, isAuthReady: true };
     case 'SET_ROOM_ID':   return { ...state, roomId: action.roomId };
     case 'SET_ROOM': {
       const me       = action.room?.players?.[state.userId] || null;
@@ -100,7 +102,7 @@ export function GameProvider({ children }) {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const firstName = extractFullName(user);
-        dispatch({ type: 'SET_AUTH', userId: user.uid, userEmail: user.email });
+        dispatch({ type: 'SET_AUTH', userId: user.uid, userEmail: user.email, isAnonymous: user.isAnonymous });
 
         try {
           const name = await resolveUniqueName(user.uid, firstName);
@@ -127,7 +129,7 @@ export function GameProvider({ children }) {
           // Auth is ready but setup failed — LoginScreen will show
         }
       } else {
-        dispatch({ type: 'SET_AUTH', userId: null, userEmail: null });
+        dispatch({ type: 'SET_AUTH', userId: null, userEmail: null, isAnonymous: false });
       }
     });
     return unsub;
@@ -193,11 +195,21 @@ export function GameProvider({ children }) {
   };
 
   /** Trigger Anonymous sign-in — called from LoginScreen */
-  const loginAnonymously = async () => {
+  const loginAnonymously = async (customName) => {
     dispatch({ type: 'SET_LOADING', value: true });
     dispatch({ type: 'SET_ERROR', error: null });
     try {
       await signInAnonymouslyUser();
+      
+      if (customName) {
+        // Ensure the name is unique before setting it
+        const uid = auth.currentUser?.uid;
+        const uniqueName = await resolveUniqueName(uid, customName);
+        
+        localStorage.setItem(STORAGE_KEY, uniqueName);
+        await setUserOnline(uid, uniqueName);
+        dispatch({ type: 'SET_LOGGED_IN', name: uniqueName });
+      }
     } catch (err) {
       const msg = err.message || 'Anonymous sign-in failed';
       dispatch({ type: 'SET_ERROR', error: msg });
@@ -210,13 +222,14 @@ export function GameProvider({ children }) {
     if (state.userId) await removeUserOnline(state.userId).catch(() => {});
     localStorage.removeItem(STORAGE_KEY);
     await signOutUser();
+    dispatch({ type: 'SET_LOADING', value: false });
     dispatch({ type: 'LOGOUT' });
   };
 
   return (
     <GameContext.Provider value={{
       state, setRoomId, leaveRoom, setLoading, setError, notify,
-      loginWithGoogle, logout, updateUsername,
+      loginWithGoogle, loginAnonymously, logout, updateUsername,
       // keep loginWithName as no-op alias so any existing callers don't crash
       loginWithName: async () => {},
     }}>

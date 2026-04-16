@@ -1,6 +1,6 @@
 // src/components/LoginScreen.js
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Button, CircularProgress, Alert, Chip, Divider } from '@mui/material';
+import { Box, Typography, Button, CircularProgress, Alert, Chip, Divider, TextField } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameContext } from '../context/GameContext';
 import { listenOnlineUsers } from '../firebase/services';
@@ -46,6 +46,7 @@ function GoogleLogo() {
 export function LoginScreen() {
   const { state, loginWithGoogle, loginAnonymously } = useGameContext();
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [guestName, setGuestName] = useState('');
 
   useEffect(() => {
     if (!state.isAuthReady) return;
@@ -54,7 +55,15 @@ export function LoginScreen() {
   }, [state.isAuthReady]);
 
   const handleSignIn = () => loginWithGoogle();
-  const handleAnonSignIn = () => loginAnonymously();
+  const handleAnonSignIn = async () => {
+    if (!guestName.trim()) {
+      // We can't use state.setError directly here easily without a wrapper, 
+      // but we can just alert or let the context handle it if we pass the name.
+      // For now, let's just prevent the call.
+      return;
+    }
+    await loginAnonymously(guestName.trim());
+  };
 
   return (
     <Box sx={{
@@ -169,11 +178,31 @@ export function LoginScreen() {
             <Divider sx={{ flex: 1 }} />
           </Box>
 
+          <TextField
+            fullWidth
+            variant="outlined"
+            placeholder="Enter your nickname"
+            value={guestName}
+            onChange={(e) => setGuestName(e.target.value)}
+            disabled={state.isLoading}
+            sx={{
+              mb: 2,
+              '& .MuiOutlinedInput-root': {
+                color: '#e6edf3',
+                borderRadius: '14px',
+                bgcolor: 'rgba(255,255,255,0.05)',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              },
+              '& label': { color: '#8b949e' },
+            }}
+          />
+
           <Button
             fullWidth
             variant="outlined"
             onClick={handleAnonSignIn}
-            disabled={state.isLoading}
+            disabled={state.isLoading || !guestName.trim()}
             sx={{
               py: 1.5, borderRadius: '14px', fontWeight: 800, fontSize: '0.95rem',
               borderColor: 'rgba(255,255,255,0.2)', color: '#e6edf3',

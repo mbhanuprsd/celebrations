@@ -1,7 +1,6 @@
 // src/games/minigolf/MiniGolfGame.js
-import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Typography, Avatar, Modal } from '@mui/material';
-import { motion } from 'framer-motion';
+import React from 'react';
+import { Box, Typography } from '@mui/material';
 import { useGameContext } from '../../context/GameContext';
 import { useRoom } from '../../hooks/useRoom';
 import { useGameGuard } from '../../hooks/useGameSession';
@@ -15,14 +14,14 @@ export function MiniGolfGame() {
   const { room, userId } = state;
   const u = room?.miniGolfState;
 
-  const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({
+  const { online, confirmOpen, cancelLeave, confirmLeave } = useGameGuard({
     roomId: state.roomId, userId, gameType: 'minigolf', leaveCallback: leave,
   });
 
-  if (!room || !u) return null;
+  if (!room || !u || !u.playerOrder) return null;
 
-  const isMyTurn = u.playerOrder[u.currentIndex] === userId;
-  const currentHole = HOLES[u.currentHoleIdx];
+  const isMyTurn = u.playerOrder && u.playerOrder[u.currentIndex] === userId;
+  const currentHole = HOLES[u.currentHoleIdx] || HOLES[0];
 
   const handleHit = async (vx, vy) => {
     if (!isMyTurn) return;

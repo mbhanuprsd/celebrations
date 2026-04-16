@@ -1,6 +1,6 @@
 // src/games/ludo/LudoGame.js — Ludo King mobile-first, no-scroll, 100dvh
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { Box, Typography, IconButton, Button, Chip, Avatar } from '@mui/material';
+import { Box, Typography, IconButton, Button, Chip } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import ReplayIcon from '@mui/icons-material/Replay';

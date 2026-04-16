@@ -1,7 +1,7 @@
 // src/games/uno/unoFirebaseService.js
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { buildDeck, shuffleArray, canPlayCard, nextIndex, PLAYABLE_COLORS } from './unoConstants';
+import { buildDeck, shuffleArray, canPlayCard, nextIndex } from './unoConstants';
 import { sendSystemMessage } from '../../firebase/services';
 
 const HAND_SIZE = 7;

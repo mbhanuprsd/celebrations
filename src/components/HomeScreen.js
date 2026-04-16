@@ -100,7 +100,10 @@ function BgOrbs() {
 
 // ─── Side Navigation Drawer ───────────────────────────────────────────────────
 
-function SideNav({ open, onClose, activeSection, onSectionChange, playerName, onLogout }) {
+function SideNav({ open, onClose, activeSection, onSectionChange, playerName, isAnonymous, onLogout }) {
+  // Items that need Google sign-in
+  const GATED_IDS = ['chat', 'profile'];
+
   return (
     <Drawer
       open={open}
@@ -153,6 +156,13 @@ function SideNav({ open, onClose, activeSection, onSectionChange, playerName, on
             <Box display="flex" alignItems="center" gap={0.5}>
               <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: '#22C55E', boxShadow: '0 0 4px #22C55E' }} />
               <Typography sx={{ fontSize: '0.6rem', color: '#484f58', fontWeight: 600 }}>Online</Typography>
+              {isAnonymous && (
+                <Typography sx={{ fontSize: '0.55rem', color: '#FFD166', fontWeight: 800,
+                  bgcolor: 'rgba(255,209,102,0.1)', px: 0.7, py: 0.15, borderRadius: '5px',
+                  border: '1px solid rgba(255,209,102,0.25)', ml: 0.3 }}>
+                  Guest
+                </Typography>
+              )}
             </Box>
           </Box>
         </Box>
@@ -165,6 +175,7 @@ function SideNav({ open, onClose, activeSection, onSectionChange, playerName, on
         {NAV_ITEMS.map((item) => {
           const active = activeSection === item.id;
           const Icon = item.icon;
+          const locked = isAnonymous && GATED_IDS.includes(item.id);
           return (
             <motion.div key={item.id} whileTap={{ scale: 0.97 }}>
               <Box
@@ -174,6 +185,7 @@ function SideNav({ open, onClose, activeSection, onSectionChange, playerName, on
                   px: 1.8, py: 1.3, borderRadius: '14px', cursor: 'pointer',
                   background: active ? `${item.color}14` : 'transparent',
                   border: `1px solid ${active ? item.color + '30' : 'transparent'}`,
+                  opacity: locked ? 0.6 : 1,
                   transition: 'all 0.18s',
                   '&:hover': {
                     background: active ? `${item.color}18` : 'rgba(255,255,255,0.05)',
@@ -185,7 +197,14 @@ function SideNav({ open, onClose, activeSection, onSectionChange, playerName, on
                 <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', color: active ? item.color : '#8b949e', flex: 1, transition: 'color 0.18s' }}>
                   {item.label}
                 </Typography>
-                {active && (
+                {locked && (
+                  <Typography sx={{ fontSize: '0.6rem', color: '#484f58', fontWeight: 700,
+                    bgcolor: 'rgba(255,255,255,0.06)', px: 0.8, py: 0.2, borderRadius: '6px',
+                    border: '1px solid rgba(255,255,255,0.08)' }}>
+                    🔒 Google
+                  </Typography>
+                )}
+                {!locked && active && (
                   <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: item.color, boxShadow: `0 0 6px ${item.color}` }} />
                 )}
               </Box>
@@ -196,8 +215,25 @@ function SideNav({ open, onClose, activeSection, onSectionChange, playerName, on
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
-      {/* Sign out */}
-      <Box sx={{ px: 1.5, py: 1.5 }}>
+      {/* Sign out / upgrade */}
+      <Box sx={{ px: 1.5, py: 1.5, display: 'flex', flexDirection: 'column', gap: 0.6 }}>
+        {isAnonymous && (
+          <Box
+            onClick={() => { onLogout(); }}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1.5,
+              px: 1.8, py: 1.2, borderRadius: '14px', cursor: 'pointer',
+              background: 'rgba(76,201,240,0.07)', border: '1px solid rgba(76,201,240,0.2)',
+              transition: 'all 0.18s',
+              '&:hover': { background: 'rgba(76,201,240,0.12)', border: '1px solid rgba(76,201,240,0.35)' },
+            }}
+          >
+            <Typography sx={{ fontSize: '0.95rem' }}>🔑</Typography>
+            <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: '#4CC9F0', flex: 1 }}>
+              Sign in with Google
+            </Typography>
+          </Box>
+        )}
         <Box
           onClick={onLogout}
           sx={{
@@ -208,7 +244,9 @@ function SideNav({ open, onClose, activeSection, onSectionChange, playerName, on
           }}
         >
           <LogoutIcon sx={{ fontSize: 18, color: '#484f58' }} />
-          <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: '#484f58' }}>Sign Out</Typography>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: '#484f58' }}>
+            {isAnonymous ? 'Exit Guest Session' : 'Sign Out'}
+          </Typography>
         </Box>
       </Box>
     </Drawer>
@@ -644,6 +682,54 @@ function ChatTick({ double = false, read = false }) {
   );
 }
 
+// ─── Guest Gate ───────────────────────────────────────────────────────────────
+
+function GuestGateMessage({ feature }) {
+  const { loginWithGoogle } = useGameContext();
+  return (
+    <Box sx={{
+      textAlign: 'center', py: 7, px: 3, borderRadius: '22px',
+      border: '1px dashed rgba(255,255,255,0.1)',
+      background: 'rgba(14,21,32,0.6)',
+    }}>
+      <motion.div
+        animate={{ y: [0, -6, 0] }}
+        transition={{ duration: 2.5, repeat: Infinity }}
+      >
+        <Typography sx={{ fontSize: '2.8rem', mb: 1.5 }}>🔒</Typography>
+      </motion.div>
+      <Typography sx={{ color: '#e6edf3', fontWeight: 900, fontSize: '1rem', mb: 0.6 }}>
+        {feature} requires a Google account
+      </Typography>
+      <Typography sx={{ color: '#484f58', fontSize: '0.78rem', mb: 3, lineHeight: 1.5 }}>
+        Guest accounts can't access {feature.toLowerCase()}.<br />Sign in with Google to unlock it.
+      </Typography>
+      <Button
+        variant="contained"
+        onClick={loginWithGoogle}
+        startIcon={
+          <svg width="18" height="18" viewBox="0 0 48 48" style={{ display: 'block' }}>
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+        }
+        sx={{
+          bgcolor: 'white', color: '#1f1f1f', borderRadius: '14px',
+          fontWeight: 800, fontSize: '0.9rem', textTransform: 'none',
+          px: 3, py: 1.2,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          '&:hover': { bgcolor: '#f0f0f0', transform: 'translateY(-1px)', boxShadow: '0 6px 24px rgba(0,0,0,0.5)' },
+          transition: 'all 0.2s',
+        }}
+      >
+        Continue with Google
+      </Button>
+    </Box>
+  );
+}
+
 function GlobalChatPanel({ userId, playerName }) {
   const [messages, setMessages]   = useState([]);
   const [input,    setInput]      = useState('');
@@ -986,16 +1072,18 @@ function GlobalChatPanel({ userId, playerName }) {
 
 // ─── Profile Panel ────────────────────────────────────────────────────────────
 
-function PastGamesSection({ userId }) {
+function PastGamesSection({ userId, isAnonymous }) {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [openId, setOpenId] = useState(null);
 
   useEffect(() => {
-    if (!userId) { setLoading(false); return; }
+    if (!userId || isAnonymous) { setLoading(false); return; }
     getUserGameHistory(userId, 15).then(data => { setGames(data); setLoading(false); });
-  }, [userId]);
+  }, [userId, isAnonymous]);
+
+  if (isAnonymous) return <GuestGateMessage feature="Past Games" />;
 
   if (loading) return (
     <Box sx={{ mb: 2 }}>
@@ -1130,7 +1218,7 @@ function PastGamesSection({ userId }) {
 }
 
 function ProfilePanel({ state, updateUsername, logout }) {
-  const { playerName, userId, userEmail } = state;
+  const { playerName, userId, userEmail, isAnonymous } = state;
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [nameError, setNameError] = useState('');
@@ -1138,7 +1226,7 @@ function ProfilePanel({ state, updateUsername, logout }) {
   const [stats, setStats] = useState({ played: 0, wins: 0, top3: 0 });
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || isAnonymous) return;
     getUserGameHistory(userId, 50).then(games => {
       setStats({
         played: games.length,
@@ -1146,7 +1234,7 @@ function ProfilePanel({ state, updateUsername, logout }) {
         top3:   games.filter(g => (g.myRank || g.rank) <= 3).length,
       });
     });
-  }, [userId]);
+  }, [userId, isAnonymous]);
 
   const startEdit = () => { setNameInput(playerName || ''); setNameError(''); setEditingName(true); };
   const cancelEdit = () => { setEditingName(false); setNameError(''); };
@@ -1243,7 +1331,7 @@ function ProfilePanel({ state, updateUsername, logout }) {
         </Button>
       </Box>
 
-      <PastGamesSection userId={userId} />
+      <PastGamesSection userId={userId} isAnonymous={isAnonymous} />
     </Box>
   );
 }
@@ -1270,6 +1358,7 @@ export function HomeScreen() {
         activeSection={activeSection}
         onSectionChange={setActiveSection}
         playerName={playerName}
+        isAnonymous={state.isAnonymous}
         onLogout={logout}
       />
 
@@ -1321,7 +1410,10 @@ export function HomeScreen() {
           )}
           {activeSection === 'chat' && (
             <motion.div key="chat" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 14 }} transition={{ duration: 0.22 }}>
-              <GlobalChatPanel userId={state.userId} playerName={playerName} />
+              {state.isAnonymous
+                ? <GuestGateMessage feature="Global Chat" />
+                : <GlobalChatPanel userId={state.userId} playerName={playerName} />
+              }
             </motion.div>
           )}
           

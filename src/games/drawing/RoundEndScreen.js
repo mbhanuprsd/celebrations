@@ -1,7 +1,7 @@
 // src/games/drawing/RoundEndScreen.js
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, Avatar, Paper, LinearProgress } from '@mui/material';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 
 const MEDALS = ['🥇','🥈','🥉'];
@@ -18,7 +18,6 @@ export function RoundEndScreen({ room }) {
     .sort((a, b) => b.score - a.score);
 
   const word = room?.currentWord;
-  const drawer = room?.players?.[room?.currentDrawer];
   const topScore = Math.max(...players.map(p => p.score), 1);
 
   return (

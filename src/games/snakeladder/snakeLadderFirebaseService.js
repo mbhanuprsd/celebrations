@@ -21,7 +21,6 @@ export async function initSnakeLadderGame(roomId, playerIds) {
   };
 
   await updateDoc(doc(db, 'rooms', roomId), { status: 'playing', slState });
-  const firstName = playerIds[0];
   await sendSystemMessage(roomId, `🎲 Snake & Ladder started! First turn begins.`);
 }
 

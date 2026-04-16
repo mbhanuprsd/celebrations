@@ -449,47 +449,32 @@ export const listenOpenRooms = (callback) => {
 
 export const setUserOnline = async (uid, name) => {
   const userRef = ref(rtdb, `onlineUsers/${uid}`);
-  await set(userRef, { uid, name, since: rtServerTimestamp() });
+  await set(userRef, {
+    uid,
+    name,
+    lastSeen: rtServerTimestamp(),
+  });
   onDisconnect(userRef).remove();
-};
-
-/**
- * Update a player's display name inside an active room (Firestore) and
- * in the onlineUsers node (RTDB).  Safe to call even when the user is
- * not currently in a room (roomId === null).
- */
-export const updatePlayerNameInRoom = async (uid, roomId, newName) => {
-  // Always update RTDB presence
-  const userRef = ref(rtdb, `onlineUsers/${uid}`);
-  await set(userRef, { uid, name: newName, since: rtServerTimestamp() });
-  onDisconnect(userRef).remove();
-
-  // Update Firestore room player entry only if inside a room
-  if (roomId) {
-    const roomRef = doc(db, 'rooms', roomId);
-    await updateDoc(roomRef, {
-      [`players.${uid}.name`]: newName,
-      [`players.${uid}.avatar`]: generateAvatar(newName),
-    });
-  }
 };
 
 export const removeUserOnline = async (uid) => {
   await remove(ref(rtdb, `onlineUsers/${uid}`));
 };
 
-/** Returns true if name is free (not taken by another uid) */
-export const checkNameAvailable = (name) => {
-  return new Promise((resolve) => {
-    const usersRef = ref(rtdb, 'onlineUsers');
-    onValue(usersRef, (snap) => {
-      const val = snap.val() || {};
-      const taken = Object.values(val).some(
-        u => u.name?.toLowerCase() === name.toLowerCase()
-      );
-      resolve(!taken);
-    }, { onlyOnce: true });
-  });
+/**
+ * Update a player's name both in the online list (RTDB) and in a specific room (Firestore).
+ */
+export const updatePlayerNameInRoom = async (userId, roomId, newName) => {
+  // 1. Update in RTDB online list
+  await setUserOnline(userId, newName);
+
+  // 2. Update in Firestore room players map
+  if (roomId) {
+    const roomRef = doc(db, 'rooms', roomId);
+    await updateDoc(roomRef, {
+      [`players.${userId}.name`]: newName,
+    });
+  }
 };
 
 export const listenOnlineUsers = (callback) => {
@@ -509,6 +494,8 @@ export const listenOnlineUsers = (callback) => {
  */
 export const saveGameHistory = async (uid, gameData) => {
   if (!uid) return;
+  // Anonymous users don't get game history saved (Firestore rules also block it)
+  if (auth.currentUser?.isAnonymous) return;
   try {
     await addDoc(collection(db, 'users', uid, 'gameHistory'), {
       ...gameData,
@@ -542,6 +529,8 @@ export const getUserGameHistory = async (uid, limitCount = 15) => {
 
 export const sendGlobalMessage = async (userId, playerName, text) => {
   if (!userId || !text?.trim()) return;
+  // Anonymous users cannot post to Global Chat (Firestore rules also block it)
+  if (auth.currentUser?.isAnonymous) return;
   await addDoc(collection(db, 'globalChat'), {
     userId,
     name: playerName,

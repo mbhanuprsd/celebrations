@@ -324,7 +324,7 @@ export function DrawingGame() {
         await updateDoc(doc(db, 'rooms', roomId), { currentWordHint: newHint });
       }, remaining);
     });
-  }, [room?.roundStartTime, isHost, roomId]);
+  }, [room?.roundStartTime, room?.currentWord, room?.status, room?.settings.drawTime, isHost, roomId]);
 
   const handleTimeout = useCallback(async () => {
     if (!isHost || timeoutCalledRef.current) return;

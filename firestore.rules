@@ -1,6 +1,48 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    allow read, write: if true;
+
+    // Helper: is the caller a real (non-anonymous) Google user?
+    function isGoogleUser() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Helper: any authenticated user (Google or anonymous)
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    // ── Rooms: any authenticated user can participate ──────────────────────
+    match /rooms/{roomId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed();
+      allow update: if isAuthed();
+      allow delete: if isAuthed()
+        && (resource.data.hostId == request.auth.uid);
+    }
+
+    // ── Global Chat: anyone can read, only Google users can write ──────────
+    match /globalChat/{messageId} {
+      allow read:   if isAuthed();
+      allow create: if isGoogleUser()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 500;
+      allow update, delete: if false;
+    }
+
+    // ── Game History: only the owner, and only Google users ───────────────
+    match /users/{userId}/gameHistory/{historyId} {
+      allow read:   if isGoogleUser() && request.auth.uid == userId;
+      allow create: if isGoogleUser() && request.auth.uid == userId;
+      allow update, delete: if false;
+    }
+
+    // ── Catch-all: deny everything else ───────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

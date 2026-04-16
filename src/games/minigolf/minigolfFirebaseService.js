@@ -1,7 +1,7 @@
 // src/games/minigolf/minigolfFirebaseService.js
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { MINIGOLF_SETTINGS, HOLES } from './minigolfConstants';
+import { HOLES } from './minigolfConstants';
 import { sendSystemMessage } from '../../firebase/services';
 
 export async function initMiniGolfGame(roomId, playerOrder) {

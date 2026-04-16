@@ -11,6 +11,7 @@ import { DrawingGame } from './games/drawing/DrawingGame';
 import { LudoGame } from './games/ludo/LudoGame';
 import { SnakeLadderGame } from './games/snakeladder/SnakeLadderGame';
 import { UnoGame } from './games/uno/UnoGame';
+import { MiniGolfGame } from './games/minigolf/MiniGolfGame';
 import { Box, CircularProgress } from '@mui/material';
 
 const GAME_COMPONENTS = {
@@ -18,6 +19,7 @@ const GAME_COMPONENTS = {
   ludo: LudoGame,
   snakeladder: SnakeLadderGame,
   uno: UnoGame,
+  minigolf: MiniGolfGame,
 };
 
 function AppContent() {

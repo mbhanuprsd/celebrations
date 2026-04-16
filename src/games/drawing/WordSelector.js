@@ -1,7 +1,7 @@
 // src/games/drawing/WordSelector.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Box, Typography, Button, LinearProgress, Paper } from '@mui/material';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { DrawingGameEngine } from './DrawingGameEngine';
 
 export function WordSelector({ roomId, userId, room, onWordSelected }) {
@@ -16,7 +16,13 @@ export function WordSelector({ roomId, userId, room, onWordSelected }) {
       setChoices(engine.getWordChoices());
       setTimeLeft(15);
     }
-  }, [isDrawer, roomId]);
+  }, [isDrawer, roomId, userId, room]);
+
+  const handleSelect = useCallback(async (word) => {
+    if (selected) return;
+    setSelected(word);
+    await onWordSelected(word);
+  }, [selected, onWordSelected]);
 
   // Auto-select countdown
   useEffect(() => {
@@ -34,13 +40,7 @@ export function WordSelector({ roomId, userId, room, onWordSelected }) {
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [isDrawer, choices]);
-
-  const handleSelect = async (word) => {
-    if (selected) return;
-    setSelected(word);
-    await onWordSelected(word);
-  };
+  }, [isDrawer, choices, handleSelect]);
 
   const drawerName = room.players?.[room.currentDrawer]?.name || 'Someone';
 

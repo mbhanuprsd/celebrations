@@ -13,12 +13,6 @@ import { saveGameHistory } from '../../firebase/services';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32'];
-const FUN_MESSAGES = [
-  'Absolute legend! 👑',
-  'So close! Almost had it! 🔥',
-  'Better luck next time! 💪',
-  'Keep practicing! 🎨',
-];
 
 export function FinalScores() {
   const { state } = useGameContext();

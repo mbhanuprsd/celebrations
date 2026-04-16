@@ -166,7 +166,7 @@ function PendingAlert({ pendingDraw, pendingDrawType, isMyTurn }) {
 }
 
 // ─── Game over overlay ────────────────────────────────────────────────────────
-function GameOverScreen({ rankings, players, onRematch, isHost }) {
+function GameOverScreen({ rankings, players, onRematch, isHost, onExit }) {
   return (
     <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} style={{ position:'absolute', inset:0, zIndex:100, display:'flex', alignItems:'center', justifyContent:'center' }}>
       <Box sx={{ position:'absolute', inset:0, bgcolor:'rgba(4,8,16,0.93)', backdropFilter:'blur(14px)' }} />
@@ -185,8 +185,13 @@ function GameOverScreen({ rankings, players, onRematch, isHost }) {
             ))}
           </Box>
           {isHost ? (
-            <Box onClick={onRematch} sx={{ py:1.4, borderRadius:'14px', fontWeight:900, fontSize:'0.95rem', background:'linear-gradient(135deg,#7c3aed,#a855f7)', boxShadow:'0 8px 24px rgba(124,58,237,0.45)', display:'flex', alignItems:'center', justifyContent:'center', gap:1, cursor:'pointer', color:'white' }}>
-              <ReplayIcon sx={{ fontSize:18 }} /> Play Again
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Box onClick={onRematch} sx={{ py:1.4, borderRadius:'14px', fontWeight:900, fontSize:'0.95rem', background:'linear-gradient(135deg,#7c3aed,#a855f7)', boxShadow:'0 8px 24px rgba(124,58,237,0.45)', display:'flex', alignItems:'center', justifyContent:'center', gap:1, cursor:'pointer', color:'white' }}>
+                <ReplayIcon sx={{ fontSize:18 }} /> Play Again
+              </Box>
+              <Box onClick={onExit} sx={{ py:1.4, borderRadius:'14px', fontWeight:900, fontSize:'0.95rem', border:'1px solid rgba(255,255,255,0.1)', display:'flex', alignItems:'center', justifyContent:'center', gap:1, cursor:'pointer', color:'#94a3b8', '&:hover': { color: '#fff', borderColor: 'rgba(255,255,255,0.3)' } }}>
+                <ExitToAppIcon sx={{ fontSize:18 }} /> Exit Game
+              </Box>
             </Box>
           ) : (
             <Typography sx={{ fontSize:'0.78rem', color:'#475569' }}>Waiting for host to restart…</Typography>
@@ -292,6 +297,11 @@ export function UnoGame() {
   }, [canDrawCard, busy, room?.id, userId]);
 
   const handleRematch = useCallback(async () => { if (room) await resetUnoGame(room.id); }, [room]);
+
+  const handleExit = useCallback(async () => {
+    const playerName = state.me?.name || state.playerName;
+    await leave(state.roomId, state.userId, playerName);
+  }, [state, leave]);
 
   if (!room || !u) return null;
 
@@ -426,7 +436,7 @@ export function UnoGame() {
       </Box>
 
       <ColorPicker open={!!pendingWild} onPick={handleColorPick} />
-      <AnimatePresence>{gameOver&&<GameOverScreen rankings={u.rankings||[]} players={room.players} onRematch={handleRematch} isHost={isHost} />}</AnimatePresence>
+      <AnimatePresence>{gameOver&&<GameOverScreen rankings={u.rankings||[]} players={room.players} onRematch={handleRematch} isHost={isHost} onExit={handleExit} />}</AnimatePresence>
       <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
     </Box>
   );
