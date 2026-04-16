@@ -18,6 +18,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import ChatIcon from '@mui/icons-material/Chat';
 import PersonIcon from '@mui/icons-material/Person';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SendIcon from '@mui/icons-material/Send';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
@@ -46,6 +47,7 @@ const NAV_ITEMS = [
   { id: 'games',   label: 'Games',       icon: SportsEsportsIcon, color: '#4CC9F0' },
   { id: 'chat',    label: 'Global Chat', icon: ChatIcon,          color: '#F72585' },
   { id: 'profile', label: 'Profile',     icon: PersonIcon,        color: '#FFD166' },
+  { id: 'help',    label: 'How to Play',  icon: HelpOutlineIcon,  color: '#06D6A0' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1255,7 +1257,7 @@ export function HomeScreen() {
   const [activeSection, setActiveSection] = useState('games');
   const [localError, setLocalError] = useState('');
 
-  const SECTION_LABEL = { games: '🎮 Games', chat: '💬 Global Chat', profile: '👤 Profile' };
+  const SECTION_LABEL = { games: '🎮 Games', chat: '💬 Global Chat', profile: '👤 Profile', help: '📖 How to Play' };
   const activeMeta = NAV_ITEMS.find(n => n.id === activeSection);
 
   return (
@@ -1322,7 +1324,30 @@ export function HomeScreen() {
               <GlobalChatPanel userId={state.userId} playerName={playerName} />
             </motion.div>
           )}
+          
+          {activeSection === 'help' && (
+            <motion.div key="help" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 14 }} transition={{ duration: 0.22 }}>
+              <Box sx={{ p: 3, color: 'white' }}>
+                <Typography variant="h5" sx={{ mb: 3, fontWeight: 900, color: '#06D6A0' }}>📖 How to Play</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {Object.entries(GAME_META).map(([id, meta]) => (
+                    <Card key={id} sx={{ bgcolor: 'rgba(255,255,255,0.05)', borderLeft: `4px solid ${meta.color || '#4CC9F0'}`, borderRadius: '12px' }}>
+                      <CardContent sx={{ p: 2 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 800, color: meta.color || '#4CC9F0', mb: 1 }}>
+                          {meta.label} {meta.icon}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: '#aaa', lineHeight: 1.6 }}>
+                          {meta.howToPlay || 'Instructions coming soon!'}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Box>
+              </Box>
+            </motion.div>
+          )}
           {activeSection === 'profile' && (
+
             <motion.div key="profile" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 14 }} transition={{ duration: 0.22 }}>
               <ProfilePanel state={state} updateUsername={updateUsername} logout={logout} />
             </motion.div>
