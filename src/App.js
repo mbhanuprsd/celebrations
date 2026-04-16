@@ -12,7 +12,7 @@ import { LudoGame } from './games/ludo/LudoGame';
 import { SnakeLadderGame } from './games/snakeladder/SnakeLadderGame';
 import { UnoGame } from './games/uno/UnoGame';
 import { MiniGolfGame } from './games/minigolf/MiniGolfGame';
-import { Box, CircularProgress } from '@mui/material';
+import { Box, CircularProgress, Typography } from '@mui/material';
 
 const GAME_COMPONENTS = {
   drawing: DrawingGame,
@@ -49,6 +49,19 @@ function AppContent() {
 
   const GameComp = GAME_COMPONENTS[room?.gameType] || DrawingGame;
 
+  // Check if the game-specific state is ready before rendering the game component
+  const isGameStateReady = () => {
+    if (!room) return false;
+    switch (room.gameType) {
+      case 'drawing': return !!room.currentDrawer;
+      case 'ludo': return !!room.ludoState;
+      case 'snakeladder': return !!room.slState;
+      case 'uno': return !!room.unoState;
+      case 'minigolf': return !!room.miniGolfState;
+      default: return true;
+    }
+  };
+
   return (
     <AnimatePresence mode="wait">
       {screen === 'home' && (
@@ -63,7 +76,14 @@ function AppContent() {
       )}
       {screen === 'game' && (
         <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} style={{ height: '100dvh' }}>
-          <GameComp />
+          {isGameStateReady() ? (
+            <GameComp />
+          ) : (
+            <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#080c12', color: 'white' }}>
+              <CircularProgress sx={{ color: '#4CC9F0', mb: 2 }} />
+              <Typography sx={{ fontWeight: 700, color: '#8b949e' }}>Loading game state...</Typography>
+            </Box>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

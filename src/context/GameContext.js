@@ -76,7 +76,15 @@ function extractFullName(user) {
 async function resolveUniqueName(uid, baseName) {
   // Returning user: restore their saved name from localStorage
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return saved;
+  if (saved) {
+    // For returning users, we trust the saved name unless it's a generic "Guest"
+    if (!saved.startsWith('Guest')) {
+      return saved;
+    }
+    // If it's a generic "GuestX" name, we verify availability
+    const available = await checkNameAvailableForUid(saved, uid);
+    if (available) return saved;
+  }
 
   // New session: find an available variant of their first name
   let name = baseName;
@@ -105,7 +113,20 @@ export function GameProvider({ children }) {
         dispatch({ type: 'SET_AUTH', userId: user.uid, userEmail: user.email, isAnonymous: user.isAnonymous });
 
         try {
-          const name = await resolveUniqueName(user.uid, firstName);
+          // Priority: 1. Saved name in localStorage, 2. Resolved unique name
+          const savedName = localStorage.getItem(STORAGE_KEY);
+          let name;
+          if (savedName) {
+            const available = await checkNameAvailableForUid(savedName, user.uid);
+            if (available) {
+              name = savedName;
+            } else {
+              name = await resolveUniqueName(user.uid, firstName);
+            }
+          } else {
+            name = await resolveUniqueName(user.uid, firstName);
+          }
+
           await setUserOnline(user.uid, name);
           localStorage.setItem(STORAGE_KEY, name);
           dispatch({ type: 'SET_LOGGED_IN', name });
@@ -142,6 +163,10 @@ export function GameProvider({ children }) {
     if (unsubChatRef.current) unsubChatRef.current();
 
     unsubRoomRef.current = listenRoom(state.roomId, (room) => {
+      if (room && state.userId && room.hostId && room.hostId !== state.userId && !room.players?.[room.hostId]) {
+        notify('The host has left the game. Returning home...');
+        setTimeout(() => leaveRoom(), 3000);
+      }
       dispatch({ type: 'SET_ROOM', room });
     });
     unsubChatRef.current = listenChat(state.roomId, (chat) => {
@@ -151,7 +176,7 @@ export function GameProvider({ children }) {
       if (unsubRoomRef.current) unsubRoomRef.current();
       if (unsubChatRef.current) unsubChatRef.current();
     };
-  }, [state.roomId]);
+  }, [state.roomId, state.userId]);
 
   const setRoomId  = (id) => dispatch({ type: 'SET_ROOM_ID', roomId: id });
   const leaveRoom  = () => dispatch({ type: 'LEAVE_ROOM' });
@@ -199,11 +224,11 @@ export function GameProvider({ children }) {
     dispatch({ type: 'SET_LOADING', value: true });
     dispatch({ type: 'SET_ERROR', error: null });
     try {
-      await signInAnonymouslyUser();
+      const userCredential = await signInAnonymouslyUser();
+      const uid = userCredential.user.uid;
       
       if (customName) {
         // Ensure the name is unique before setting it
-        const uid = auth.currentUser?.uid;
         const uniqueName = await resolveUniqueName(uid, customName);
         
         localStorage.setItem(STORAGE_KEY, uniqueName);

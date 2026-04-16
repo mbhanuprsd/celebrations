@@ -130,9 +130,21 @@ export const leaveRoom = async (roomId, userId, playerName) => {
     await sendSystemMessage(roomId, `${playerName} left the game`).catch(() => { });
   }
   const roomRef = doc(db, 'rooms', roomId);
-  await updateDoc(roomRef, {
-    [`players.${userId}`]: deleteField()
-  });
+  
+  // Check if the leaving player is the host
+  const roomSnap = await getDoc(roomRef);
+  const roomData = roomSnap.data();
+  
+  if (roomData?.hostId === userId) {
+    // Host is leaving: delete the entire room to kick everyone out
+    await deleteDoc(roomRef);
+  } else {
+    // Regular player is leaving: just remove them from the players map
+    await updateDoc(roomRef, {
+      [`players.${userId}`]: deleteField()
+    });
+  }
+  
   await setPlayerOnlineStatus(roomId, userId, false);
 };
 
