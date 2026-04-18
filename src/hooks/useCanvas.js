@@ -151,12 +151,15 @@ export function useCanvas(roomId, canDraw) {
       const mx = (prev.x + pos.x) / 2;
       const my = (prev.y + pos.y) / 2;
       ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(mx, my);  // ← continue from where the curve actually ended
     } else {
       ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
     }
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
 
     currentStrokeRef.current.push(pos);
 

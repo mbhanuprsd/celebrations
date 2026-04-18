@@ -1,8 +1,8 @@
 // src/games/uno/unoFirebaseService.js
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { buildDeck, shuffleArray, canPlayCard, nextIndex } from './unoConstants';
-import { sendSystemMessage } from '../../firebase/services';
+import { sendSystemMessage , safeUpdateDoc } from '../../firebase/services';
 
 const HAND_SIZE = 7;
 
@@ -97,7 +97,7 @@ export async function initUnoGame(roomId, playerOrder) {
     lastAction: null,
   };
 
-  await updateDoc(doc(db, 'rooms', roomId), { status: 'playing', unoState });
+  await safeUpdateDoc(doc(db, 'rooms', roomId), { status: 'playing', unoState });
   await sendSystemMessage(roomId, `🃏 UNO started! ${playerOrder.length} players. Good luck!`);
   if (topCard.type === 'reverse') await sendSystemMessage(roomId, `↺ First card is Reverse!`);
   if (topCard.type === 'skip')    await sendSystemMessage(roomId, `⊘ First card is Skip!`);
@@ -201,7 +201,7 @@ export async function playUnoCard(roomId, userId, cardId, chosenColor = null) {
     updates['status'] = 'finished';
   }
 
-  await updateDoc(doc(db, 'rooms', roomId), updates);
+  await safeUpdateDoc(doc(db, 'rooms', roomId), updates);
 
   // ── System messages ──
   const pName = room.players?.[userId]?.name || 'Someone';
@@ -242,7 +242,7 @@ export async function drawUnoCard(roomId, userId) {
   // Drawing always passes the turn (no "draw then play" mechanic here, like Ocho)
   const nextIdx = nextIndex(u.currentIndex, u.direction, count);
 
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     'unoState.deck':            newDeck,
     'unoState.discardPile':     newDiscard,
     [`unoState.hands.${userId}`]: newHand,

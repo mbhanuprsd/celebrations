@@ -1,6 +1,6 @@
 // src/games/ludo/LudoGame.js — Ludo King mobile-first, no-scroll, 100dvh
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { Box, Typography, IconButton, Button, Chip } from '@mui/material';
+import { Box, Typography, IconButton, Button, Chip, Avatar } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import ReplayIcon from '@mui/icons-material/Replay';
@@ -15,7 +15,79 @@ import { rollDice, movePiece, resetLudoGame } from './ludoFirebaseService';
 import { LUDO_COLORS } from './ludoConstants';
 import { saveGameHistory } from '../../firebase/services';
 
-// ─── Corner player badge (overlaid on board) ──────────────────────────────
+// ─── Winner overlay ─────────────────────────────────────────────────────────
+function LudoWinnerOverlay({ ls, room, isHost, onReset, onLeave }) {
+  const medals = ['🥇','🥈','🥉','🏅'];
+  const rankings = ls?.rankings || (ls?.winner ? [ls.winner] : []);
+  const allUids = Object.keys(room?.players || {});
+  // Any uid not in rankings goes at the end
+  const ordered = [...rankings, ...allUids.filter(u => !rankings.includes(u))];
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+      style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(8px)' }}>
+      <motion.div initial={{ scale: 0.8, y: 30 }} animate={{ scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 22 }}>
+        <Box sx={{
+          bgcolor: '#0e1520', border: '1px solid rgba(255,215,0,0.3)',
+          borderRadius: '20px', p: { xs: 3, sm: 4 }, textAlign: 'center',
+          maxWidth: 340, width: '90vw', boxShadow: '0 0 70px rgba(255,215,0,0.18)',
+        }}>
+          <motion.div animate={{ y: [0, -8, 0] }} transition={{ repeat: Infinity, duration: 2 }}>
+            <Typography sx={{ fontSize: '3rem' }}>🏆</Typography>
+          </motion.div>
+          <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#ffd700', mb: 0.5 }}>
+            Game Over!
+          </Typography>
+          <Box mt={2} mb={3}>
+            {ordered.map((uid, i) => {
+              const player = room?.players?.[uid];
+              const colorKey = ls?.colorMap?.[uid];
+              const c = LUDO_COLORS[colorKey];
+              const name = player?.name || uid;
+              return (
+                <Box key={uid} display="flex" alignItems="center" gap={1.5}
+                  sx={{ mb: 1, p: 1, borderRadius: '10px',
+                    bgcolor: i === 0 ? 'rgba(255,215,0,0.1)' : 'rgba(255,255,255,0.03)' }}>
+                  <Typography sx={{ fontSize: '1.3rem', width: 28 }}>{medals[i] || `${i+1}.`}</Typography>
+                  <Avatar sx={{ bgcolor: c?.hex || '#4CC9F0', width: 30, height: 30,
+                    fontSize: '0.85rem', fontWeight: 900 }}>
+                    {name.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Typography sx={{ fontWeight: 800, color: i === 0 ? '#ffd700' : '#e6edf3',
+                    fontSize: '0.95rem', flex: 1, textAlign: 'left' }}>
+                    {name}
+                  </Typography>
+                  {c && (
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c.hex, flexShrink: 0 }} />
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+            {isHost && (
+              <Button variant="contained" startIcon={<ReplayIcon />} onClick={onReset}
+                sx={{ background: 'linear-gradient(135deg, #06D6A0, #118AB2)',
+                  fontWeight: 900, borderRadius: '12px', px: 3 }}>
+                Play Again
+              </Button>
+            )}
+            <Button variant="outlined" startIcon={<ExitToAppIcon />} onClick={onLeave}
+              sx={{ fontWeight: 900, borderRadius: '12px', px: 3,
+                borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444',
+                '&:hover': { borderColor: '#ef4444', bgcolor: 'rgba(239,68,68,0.08)' } }}>
+              Leave
+            </Button>
+          </Box>
+        </Box>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+
 function CornerCard({ color, player, isCurrentTurn, isMe, pieces }) {
   const c = LUDO_COLORS[color];
   if (!c) return null;
@@ -361,6 +433,17 @@ export function LudoGame() {
 
       {/* ── Game log drawer ── */}
       <GameLogDrawer chat={chat} open={logOpen} onClose={() => setLogOpen(false)} />
+
+      {/* ── Winner overlay — shown to all players ── */}
+      <AnimatePresence>
+        {ls?.winner && (
+          <LudoWinnerOverlay
+            ls={ls} room={room} isHost={isHost}
+            onReset={async () => { await resetLudoGame(roomId); notify('Reset!'); }}
+            onLeave={requestLeave}
+          />
+        )}
+      </AnimatePresence>
 
       <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
     </Box>

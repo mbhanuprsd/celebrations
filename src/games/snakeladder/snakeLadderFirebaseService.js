@@ -1,8 +1,8 @@
 // src/games/snakeladder/snakeLadderFirebaseService.js
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { assignPlayerColors, applyEffect, BOARD_SIZE } from './snakeLadderConstants';
-import { sendSystemMessage } from '../../firebase/services';
+import { sendSystemMessage , safeUpdateDoc } from '../../firebase/services';
 
 export async function initSnakeLadderGame(roomId, playerIds) {
   const colorMap = assignPlayerColors(playerIds);
@@ -20,7 +20,7 @@ export async function initSnakeLadderGame(roomId, playerIds) {
     turnCount: 0, rankings: [],
   };
 
-  await updateDoc(doc(db, 'rooms', roomId), { status: 'playing', slState });
+  await safeUpdateDoc(doc(db, 'rooms', roomId), { status: 'playing', slState });
   await sendSystemMessage(roomId, `🎲 Snake & Ladder started! First turn begins.`);
 }
 
@@ -33,7 +33,7 @@ export async function rollSnakeDice(roomId, userId) {
   if (sl.winner) return { error: 'Game over' };
 
   const value = Math.floor(Math.random() * 6) + 1;
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     'slState.diceValue': value,
     'slState.diceRolled': true,
   });
@@ -108,7 +108,7 @@ export async function moveSnakePiece(roomId, userId) {
     updates['status'] = 'finished';
   }
 
-  await updateDoc(doc(db, 'rooms', roomId), updates);
+  await safeUpdateDoc(doc(db, 'rooms', roomId), updates);
 
   if (effect.type === 'ladder') await sendSystemMessage(roomId, `🪜 Ladder! ${preEffectPos} → ${finalPos}`);
   else if (effect.type === 'snake') await sendSystemMessage(roomId, `🐍 Snake! ${preEffectPos} → ${finalPos}`);
@@ -124,7 +124,7 @@ export async function resetSnakeLadderGame(roomId) {
   if (!sl) return;
   const freshPositions = {};
   sl.playerOrder.forEach(id => { freshPositions[id] = 0; });
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     status: 'waiting',
     'slState.positions': freshPositions,
     'slState.currentTurnIndex': 0,

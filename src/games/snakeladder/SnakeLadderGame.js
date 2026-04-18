@@ -124,7 +124,7 @@ function EffectToast({ effect, visible }) {
 }
 
 // ─── Winner overlay ────────────────────────────────────────────────────────
-function WinnerScreen({ rankings, colorMap, room, isHost, onReset }) {
+function WinnerScreen({ rankings, colorMap, room, isHost, onReset, onLeave }) {
   const medals = ['🥇','🥈','🥉'];
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -164,13 +164,21 @@ function WinnerScreen({ rankings, colorMap, room, isHost, onReset }) {
               );
             })}
           </Box>
-          {isHost && (
-            <Button variant="contained" startIcon={<ReplayIcon />} onClick={onReset}
-              sx={{ background: 'linear-gradient(135deg, #06D6A0, #118AB2)', fontWeight: 900,
-                borderRadius: '12px', px: 3 }}>
-              Play Again
+          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+            {isHost && (
+              <Button variant="contained" startIcon={<ReplayIcon />} onClick={onReset}
+                sx={{ background: 'linear-gradient(135deg, #06D6A0, #118AB2)', fontWeight: 900,
+                  borderRadius: '12px', px: 3 }}>
+                Play Again
+              </Button>
+            )}
+            <Button variant="outlined" startIcon={<ExitToAppIcon />} onClick={onLeave}
+              sx={{ fontWeight: 900, borderRadius: '12px', px: 3,
+                borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444',
+                '&:hover': { borderColor: '#ef4444', bgcolor: 'rgba(239,68,68,0.08)' } }}>
+              Leave
             </Button>
-          )}
+          </Box>
         </Box>
       </motion.div>
     </motion.div>
@@ -575,7 +583,7 @@ export function SnakeLadderGame() {
       <AnimatePresence>
         {winner && (
           <WinnerScreen rankings={rankings} colorMap={colorMap} room={room}
-            isHost={isHost} onReset={handleReset} />
+            isHost={isHost} onReset={handleReset} onLeave={requestLeave} />
         )}
       </AnimatePresence>
 

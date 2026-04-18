@@ -4,7 +4,7 @@ import {
   startGame, selectWord, advanceRound, endRound, getWordChoices,
   sendSystemMessage, recordCorrectGuess, updateDrawerScore,
   clearCanvas, clearChat
-} from '../../firebase/services';
+, safeUpdateDoc } from '../../firebase/services';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 
@@ -28,7 +28,7 @@ export class DrawingGameEngine extends GameEngine {
     await clearChat(this.roomId);
     await startGame(this.roomId, playerOrder);
     // Host immediately triggers word selection for first drawer
-    await updateDoc(doc(db, 'rooms', this.roomId), { status: 'selectingWord' });
+    await safeUpdateDoc(doc(db, 'rooms', this.roomId), { status: 'selectingWord' });
     await sendSystemMessage(this.roomId, `🎨 Game started! ${this.room.players[playerOrder[0]]?.name} draws first.`);
   }
 

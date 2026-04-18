@@ -48,6 +48,9 @@ export function LoginScreen() {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [guestName, setGuestName] = useState('');
 
+  // Use auth-specific loading flag so game-level isLoading never bleeds into login UI
+  const isLoading = state.isAuthLoading;
+
   useEffect(() => {
     if (!state.isAuthReady) return;
     const unsub = listenOnlineUsers(setOnlineUsers);
@@ -56,12 +59,7 @@ export function LoginScreen() {
 
   const handleSignIn = () => loginWithGoogle();
   const handleAnonSignIn = async () => {
-    if (!guestName.trim()) {
-      // We can't use state.setError directly here easily without a wrapper, 
-      // but we can just alert or let the context handle it if we pass the name.
-      // For now, let's just prevent the call.
-      return;
-    }
+    if (!guestName.trim()) return;
     await loginAnonymously(guestName.trim());
   };
 
@@ -157,8 +155,8 @@ export function LoginScreen() {
             fullWidth
             variant="contained"
             onClick={handleSignIn}
-            disabled={state.isLoading}
-            startIcon={state.isLoading ? <CircularProgress size={18} color="inherit" /> : <GoogleLogo />}
+            disabled={isLoading}
+            startIcon={isLoading ? <CircularProgress size={18} color="inherit" /> : <GoogleLogo />}
             sx={{
               py: 1.5, borderRadius: '14px', fontWeight: 800, fontSize: '0.95rem',
               bgcolor: 'white', color: '#1f1f1f',
@@ -169,7 +167,7 @@ export function LoginScreen() {
               transition: 'all 0.2s',
             }}
           >
-            {state.isLoading ? 'Signing in…' : 'Continue with Google'}
+            {isLoading ? 'Signing in…' : 'Continue with Google'}
           </Button>
 
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, my: 2 }}>
@@ -184,7 +182,7 @@ export function LoginScreen() {
             placeholder="Enter your nickname"
             value={guestName}
             onChange={(e) => setGuestName(e.target.value)}
-            disabled={state.isLoading}
+            disabled={isLoading}
             sx={{
               mb: 2,
               '& .MuiOutlinedInput-root': {
@@ -202,7 +200,7 @@ export function LoginScreen() {
             fullWidth
             variant="outlined"
             onClick={handleAnonSignIn}
-            disabled={state.isLoading || !guestName.trim()}
+            disabled={isLoading || !guestName.trim()}
             sx={{
               py: 1.5, borderRadius: '14px', fontWeight: 800, fontSize: '0.95rem',
               borderColor: 'rgba(255,255,255,0.2)', color: '#e6edf3',
@@ -212,7 +210,7 @@ export function LoginScreen() {
               transition: 'all 0.2s',
             }}
           >
-            {state.isLoading ? 'Signing in…' : 'Play as Guest'}
+            {isLoading ? 'Signing in…' : 'Play as Guest'}
           </Button>
 
           <Typography sx={{ mt: 2.5, fontSize: '0.66rem', color: '#2a3848', lineHeight: 1.5 }}>

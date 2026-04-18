@@ -27,7 +27,8 @@ const initialState = {
   isDrawer:    false,
   chat:        [],
   notification: null,
-  isLoading:   false,
+  isLoading:   false,   // game-level loading (create/join)
+  isAuthLoading: false, // auth-only loading (login screen)
   error:       null,
 };
 
@@ -52,6 +53,7 @@ function reducer(state, action) {
     }
     case 'SET_CHAT':         return { ...state, chat: action.chat };
     case 'SET_LOADING':      return { ...state, isLoading: action.value };
+    case 'SET_AUTH_LOADING': return { ...state, isAuthLoading: action.value };
     case 'SET_ERROR':        return { ...state, error: action.error };
     case 'SET_NOTIFICATION': return { ...state, notification: action.notification };
     case 'LEAVE_ROOM':
@@ -109,6 +111,15 @@ export function GameProvider({ children }) {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // If loginAnonymously is mid-flight and will handle SET_LOGGED_IN itself,
+        // skip the generic setup here so we don't race/overwrite the custom name.
+        const pendingGuestName = sessionStorage.getItem('pending_guest_name');
+        if (user.isAnonymous && pendingGuestName) {
+          // loginAnonymously will complete setup — just mark auth ready
+          dispatch({ type: 'SET_AUTH', userId: user.uid, userEmail: user.email, isAnonymous: true });
+          return;
+        }
+
         const firstName = extractFullName(user);
         dispatch({ type: 'SET_AUTH', userId: user.uid, userEmail: user.email, isAnonymous: user.isAnonymous });
 
@@ -130,6 +141,7 @@ export function GameProvider({ children }) {
           await setUserOnline(user.uid, name);
           localStorage.setItem(STORAGE_KEY, name);
           dispatch({ type: 'SET_LOGGED_IN', name });
+          dispatch({ type: 'SET_AUTH_LOADING', value: false });
 
           // ── Auto-rejoin: if a session was saved, silently try to re-enter the room
           const session = getStoredSession();
@@ -137,20 +149,19 @@ export function GameProvider({ children }) {
             try {
               await joinRoom(session.roomId, name);
               dispatch({ type: 'SET_ROOM_ID', roomId: session.roomId });
-              // Session stays active (room listener will keep it refreshed)
-              // Don't clearSession here — it will be refreshed by useGameGuard
             } catch (e) {
               console.error('Auto-rejoin failed:', e);
-              // Room is gone or we were kicked — clear the stale session silently
               clearSession();
             }
           }
         } catch (e) {
           console.error('User setup failed:', e);
+          dispatch({ type: 'SET_AUTH_LOADING', value: false });
           // Auth is ready but setup failed — LoginScreen will show
         }
       } else {
         dispatch({ type: 'SET_AUTH', userId: null, userEmail: null, isAnonymous: false });
+        dispatch({ type: 'SET_AUTH_LOADING', value: false });
       }
     });
     return unsub;
@@ -163,9 +174,16 @@ export function GameProvider({ children }) {
     if (unsubChatRef.current) unsubChatRef.current();
 
     unsubRoomRef.current = listenRoom(state.roomId, (room) => {
-      if (room && state.userId && room.hostId && room.hostId !== state.userId && !room.players?.[room.hostId]) {
+      // Room document was deleted (host left and wiped the room)
+      if (!room) {
+        notify('The host ended the game.');
+        leaveRoom();   // immediate — no setTimeout, so no more updateDoc calls fire
+        return;
+      }
+      // Host left but room still exists — rare edge case
+      if (room.hostId && room.hostId !== state.userId && !room.players?.[room.hostId]) {
         notify('The host has left the game. Returning home...');
-        setTimeout(() => leaveRoom(), 3000);
+        setTimeout(() => leaveRoom(), 2000);
       }
       dispatch({ type: 'SET_ROOM', room });
     });
@@ -207,7 +225,7 @@ export function GameProvider({ children }) {
 
   /** Trigger Google sign-in redirect — called from LoginScreen */
   const loginWithGoogle = async () => {
-    dispatch({ type: 'SET_LOADING', value: true });
+    dispatch({ type: 'SET_AUTH_LOADING', value: true });
     dispatch({ type: 'SET_ERROR', error: null });
     try {
       await signInWithGoogle();
@@ -215,30 +233,38 @@ export function GameProvider({ children }) {
     } catch (err) {
       const msg = err.message || 'Sign-in failed';
       dispatch({ type: 'SET_ERROR', error: msg });
-      dispatch({ type: 'SET_LOADING', value: false });
+      dispatch({ type: 'SET_AUTH_LOADING', value: false });
     }
   };
 
   /** Trigger Anonymous sign-in — called from LoginScreen */
   const loginAnonymously = async (customName) => {
-    dispatch({ type: 'SET_LOADING', value: true });
+    dispatch({ type: 'SET_AUTH_LOADING', value: true });
     dispatch({ type: 'SET_ERROR', error: null });
     try {
+      // Pre-store a placeholder so onAuthStateChanged knows a custom name is pending.
+      // We use a temp key so the main STORAGE_KEY isn't polluted before uid is known.
+      if (customName) {
+        sessionStorage.setItem('pending_guest_name', customName.trim());
+      }
+
       const userCredential = await signInAnonymouslyUser();
       const uid = userCredential.user.uid;
-      
+
       if (customName) {
-        // Ensure the name is unique before setting it
-        const uniqueName = await resolveUniqueName(uid, customName);
-        
+        // Ensure the name is unique before committing
+        const uniqueName = await resolveUniqueName(uid, customName.trim());
         localStorage.setItem(STORAGE_KEY, uniqueName);
+        sessionStorage.removeItem('pending_guest_name');
         await setUserOnline(uid, uniqueName);
         dispatch({ type: 'SET_LOGGED_IN', name: uniqueName });
       }
+      dispatch({ type: 'SET_AUTH_LOADING', value: false });
     } catch (err) {
+      sessionStorage.removeItem('pending_guest_name');
       const msg = err.message || 'Anonymous sign-in failed';
       dispatch({ type: 'SET_ERROR', error: msg });
-      dispatch({ type: 'SET_LOADING', value: false });
+      dispatch({ type: 'SET_AUTH_LOADING', value: false });
     }
   };
 
@@ -255,8 +281,7 @@ export function GameProvider({ children }) {
     <GameContext.Provider value={{
       state, setRoomId, leaveRoom, setLoading, setError, notify,
       loginWithGoogle, loginAnonymously, logout, updateUsername,
-      // keep loginWithName as no-op alias so any existing callers don't crash
-      loginWithName: async () => {},
+      loginWithName: async () => {},  // no-op alias
     }}>
       {children}
     </GameContext.Provider>

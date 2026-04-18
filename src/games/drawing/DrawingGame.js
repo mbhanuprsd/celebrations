@@ -13,7 +13,7 @@ import { DrawingCanvas } from './Canvas';
 import { WordSelector } from './WordSelector';
 import { RoundEndScreen } from './RoundEndScreen';
 import { FinalScores } from './FinalScores';
-import { revealHintCharacter, submitGuess, sendChatMessage } from '../../firebase/services';
+import { revealHintCharacter, submitGuess, sendChatMessage , safeUpdateDoc } from '../../firebase/services';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 
@@ -321,7 +321,7 @@ export function DrawingGame() {
         const cur  = snap.data();
         if (cur?.status !== 'playing' || !cur?.currentWord) return;
         const newHint = revealHintCharacter(cur.currentWord, cur.currentWordHint);
-        await updateDoc(doc(db, 'rooms', roomId), { currentWordHint: newHint });
+        await safeUpdateDoc(doc(db, 'rooms', roomId), { currentWordHint: newHint });
       }, remaining);
     });
   }, [room?.roundStartTime, room?.currentWord, room?.status, room?.settings.drawTime, isHost, roomId]);
@@ -412,7 +412,7 @@ export function DrawingGame() {
         {room.status === 'selectingWord' && (
           <WordSelector key="ws" roomId={roomId} userId={userId} room={room} onWordSelected={handleWordSelected} />
         )}
-        {room.status === 'roundEnd' && <RoundEndScreen key="re" room={room} />}
+        {room.status === 'roundEnd' && <RoundEndScreen key="re" room={room} onLeave={requestLeave} />}
       </AnimatePresence>
 
       <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />

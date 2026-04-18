@@ -1,12 +1,13 @@
 // src/games/drawing/RoundEndScreen.js
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Avatar, Paper, LinearProgress } from '@mui/material';
+import { Box, Typography, Avatar, Paper, LinearProgress, Button } from '@mui/material';
 import { motion } from 'framer-motion';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 
 const MEDALS = ['🥇','🥈','🥉'];
 
-export function RoundEndScreen({ room }) {
+export function RoundEndScreen({ room, onLeave }) {
   const [countdown, setCountdown] = useState(4);
 
   useEffect(() => {
@@ -132,6 +133,18 @@ export function RoundEndScreen({ room }) {
                 sx={{ mt: 1, height: 4, borderRadius: 2 }}
               />
             </Box>
+
+            {onLeave && (
+              <Box sx={{ textAlign: 'center', mt: 2 }}>
+                <Button size="small" variant="outlined" startIcon={<ExitToAppIcon />}
+                  onClick={onLeave}
+                  sx={{ borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444', borderRadius: 2,
+                    fontSize: '0.75rem',
+                    '&:hover': { borderColor: '#ef4444', bgcolor: 'rgba(239,68,68,0.08)' } }}>
+                  Leave Game
+                </Button>
+              </Box>
+            )}
           </Box>
         </Paper>
       </motion.div>

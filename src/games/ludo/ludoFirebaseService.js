@@ -5,7 +5,7 @@ import {
   COLOR_ORDER, TOTAL_STEPS,
   assignColors, getMainPathIndex, canCapture
 } from './ludoConstants';
-import { sendSystemMessage } from '../../firebase/services';
+import { sendSystemMessage , safeUpdateDoc } from '../../firebase/services';
 
 // ─── Initial State Builder ─────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ export async function initLudoGame(roomId, playerIds) {
     turnCount: 0,
   };
 
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     status: 'playing',
     ludoState,
   });
@@ -69,7 +69,7 @@ export async function rollDice(roomId, userId) {
   const newConsecSixes = value === 6 ? ls.consecutiveSixes + 1 : 0;
   const forcedSkip = newConsecSixes >= 3; // 3 consecutive sixes = lose turn
 
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     'ludoState.diceValue': value,
     'ludoState.diceRolled': true,
     'ludoState.consecutiveSixes': forcedSkip ? 0 : newConsecSixes,
@@ -167,7 +167,7 @@ export async function movePiece(roomId, userId, pieceId) {
     updates['ludoState.consecutiveSixes'] = 0;
   }
 
-  await updateDoc(doc(db, 'rooms', roomId), updates);
+  await safeUpdateDoc(doc(db, 'rooms', roomId), updates);
 
   // System messages
   if (captureMsg) await sendSystemMessage(roomId, captureMsg);
@@ -199,7 +199,7 @@ export function getMovablePieceIds(color, pieces, diceValue) {
 async function advanceTurn(roomId, currentColor, activeColors, anotherTurn) {
   if (anotherTurn) return; // same player goes again
   const nextColor = getNextColor(currentColor, activeColors);
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     'ludoState.currentTurn': nextColor,
     'ludoState.diceValue': null,
     'ludoState.diceRolled': false,
@@ -222,7 +222,7 @@ export async function resetLudoGame(roomId) {
   const freshPieces = {};
   COLOR_ORDER.forEach(c => { freshPieces[c] = makePieces(); });
 
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     status: 'waiting',
     'ludoState.pieces': freshPieces,
     'ludoState.currentTurn': ls.activeColors[0],

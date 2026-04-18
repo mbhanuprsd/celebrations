@@ -15,6 +15,22 @@ import {
 import { db, rtdb, auth } from './index';
 import { nanoid } from 'nanoid';
 
+/**
+ * Safe wrapper around updateDoc — silently ignores "not-found" errors that
+ * occur when a room was deleted (e.g. host left) while a game loop is still
+ * running. All other errors are re-thrown as normal.
+ */
+export const safeUpdateDoc = async (docRef, data) => {
+  try {
+    await updateDoc(docRef, data);
+  } catch (err) {
+    if (err?.code === 'not-found' || err?.message?.includes('No document to update')) {
+      return;
+    }
+    throw err;
+  }
+};
+
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
 const googleProvider = new GoogleAuthProvider();
@@ -108,7 +124,7 @@ export const joinRoom = async (roomId, playerName) => {
   if (playerCount >= room.settings.maxPlayers) throw new Error('Room is full');
   if (room.status !== 'waiting') throw new Error('Game already in progress');
 
-  await updateDoc(roomRef, {
+  await safeUpdateDoc(roomRef, {
     [`players.${userId}`]: {
       id: userId,
       name: playerName,
@@ -140,7 +156,7 @@ export const leaveRoom = async (roomId, userId, playerName) => {
     await deleteDoc(roomRef);
   } else {
     // Regular player is leaving: just remove them from the players map
-    await updateDoc(roomRef, {
+    await safeUpdateDoc(roomRef, {
       [`players.${userId}`]: deleteField()
     });
   }
@@ -162,7 +178,7 @@ export const setPlayerOnlineStatus = async (roomId, userId, isOnline) => {
 
 export const startGame = async (roomId, playerOrder) => {
   const roomRef = doc(db, 'rooms', roomId);
-  await updateDoc(roomRef, {
+  await safeUpdateDoc(roomRef, {
     status: 'playing',
     currentRound: 1,
     playerOrder,
@@ -177,7 +193,7 @@ export const startGame = async (roomId, playerOrder) => {
 
 export const selectWord = async (roomId, word) => {
   const hint = generateHint(word);
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     currentWord: word,
     currentWordHint: hint,
     status: 'playing',
@@ -196,14 +212,14 @@ export const submitGuess = async (roomId, userId, playerName, guess, currentWord
 };
 
 export const recordCorrectGuess = async (roomId, userId, score, timeBonus) => {
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     [`guessedPlayers.${userId}`]: { score, timeBonus, time: Date.now() },
     [`players.${userId}.score`]: increment(score),   // ← ADD to existing score, not replace
   });
 };
 
 export const updateDrawerScore = async (roomId, drawerId, bonus) => {
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     [`players.${drawerId}.score`]: increment(bonus), // ← atomic increment, no race condition
   });
 };
@@ -213,7 +229,7 @@ export const advanceRound = async (roomId, playerOrder, drawerIndex, currentRoun
   const nextRound = nextDrawerIndex === 0 ? currentRound + 1 : currentRound;
 
   if (nextRound > totalRounds) {
-    await updateDoc(doc(db, 'rooms', roomId), {
+    await safeUpdateDoc(doc(db, 'rooms', roomId), {
       status: 'finished',
       currentDrawer: null,
       currentWord: null,
@@ -222,7 +238,7 @@ export const advanceRound = async (roomId, playerOrder, drawerIndex, currentRoun
     return false;
   }
 
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     status: 'selectingWord',
     currentRound: nextRound,
     drawerIndex: nextDrawerIndex,
@@ -236,7 +252,7 @@ export const advanceRound = async (roomId, playerOrder, drawerIndex, currentRoun
 };
 
 export const endRound = async (roomId) => {
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     status: 'roundEnd',
   });
 };
@@ -248,7 +264,7 @@ export const resetRoom = async (roomId, hostId) => {
   Object.keys(room.players).forEach(pid => {
     resetPlayers[pid] = { ...room.players[pid], score: 0 };
   });
-  await updateDoc(doc(db, 'rooms', roomId), {
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
     status: 'waiting',
     currentRound: 0,
     currentDrawer: null,
@@ -483,7 +499,7 @@ export const updatePlayerNameInRoom = async (userId, roomId, newName) => {
   // 2. Update in Firestore room players map
   if (roomId) {
     const roomRef = doc(db, 'rooms', roomId);
-    await updateDoc(roomRef, {
+    await safeUpdateDoc(roomRef, {
       [`players.${userId}.name`]: newName,
     });
   }
