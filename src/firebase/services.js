@@ -4,7 +4,7 @@
 import {
   doc, collection, setDoc, updateDoc, onSnapshot, deleteDoc,
   serverTimestamp, deleteField, getDoc, query, where, limit,
-  increment, orderBy, getDocs, addDoc
+  increment, orderBy, getDocs, addDoc, arrayUnion
 } from 'firebase/firestore';
 import {
   ref, set, onValue, off, push, onDisconnect, serverTimestamp as rtServerTimestamp, remove
@@ -199,6 +199,7 @@ export const selectWord = async (roomId, word) => {
     status: 'playing',
     roundStartTime: serverTimestamp(),
     guessedPlayers: {},
+    usedWords: arrayUnion(word),   // track used words so they aren't repeated
   });
 };
 
@@ -272,6 +273,7 @@ export const resetRoom = async (roomId, hostId) => {
     currentWordHint: null,
     roundStartTime: null,
     guessedPlayers: {},
+    usedWords: [],              // reset word history for the new session
     players: resetPlayers,
   });
   await clearCanvas(roomId);
@@ -379,9 +381,12 @@ export const listenRoom = (roomId, callback) => {
 
 // ─── Word Bank ─────────────────────────────────────────────────────────────
 
-export const getWordChoices = (count = 3) => {
+export const getWordChoices = (count = 3, usedWords = []) => {
   const pool = WORD_BANK.en;
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  // Filter out words already used this session, fall back to full pool if exhausted
+  const available = pool.filter(w => !usedWords.includes(w));
+  const source = available.length >= count ? available : pool;
+  const shuffled = [...source].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
 };
 

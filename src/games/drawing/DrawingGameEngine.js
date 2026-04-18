@@ -86,7 +86,8 @@ export class DrawingGameEngine extends GameEngine {
   }
 
   getWordChoices() {
-    this._wordChoices = getWordChoices(3);
+    const usedWords = this.room?.usedWords || [];
+    this._wordChoices = getWordChoices(3, usedWords);
     return this._wordChoices;
   }
 }
