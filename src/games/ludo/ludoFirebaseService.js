@@ -1,11 +1,11 @@
 // src/games/ludo/ludoFirebaseService.js
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   COLOR_ORDER, TOTAL_STEPS,
   assignColors, getMainPathIndex, canCapture
 } from './ludoConstants';
-import { sendSystemMessage , safeUpdateDoc } from '../../firebase/services';
+import { sendSystemMessage, safeUpdateDoc } from '../../firebase/services';
 
 // ─── Initial State Builder ─────────────────────────────────────────────────
 
@@ -36,7 +36,9 @@ export async function initLudoGame(roomId, playerIds) {
     diceRolled: false,
     consecutiveSixes: 0,
     winner: null,
-    lastMove: null,                 // { color, pieceId, from, to } for animation
+    winnerUid: null,                // FIX: store uid so player lookup works
+    rankings: [],                   // FIX: ordered list of uids as they finish
+    lastMove: null,
     turnCount: 0,
   };
 
@@ -49,138 +51,175 @@ export async function initLudoGame(roomId, playerIds) {
 }
 
 // ─── Dice Roll ─────────────────────────────────────────────────────────────
+// FIX: wrapped in runTransaction to prevent double-roll from double-tap / retry
 
 export async function rollDice(roomId, userId) {
-  const snap = await getDoc(doc(db, 'rooms', roomId));
-  const room = snap.data();
-  const ls = room.ludoState;
+  let result = {};
 
-  const myColor = ls.colorMap[userId];
-  if (ls.currentTurn !== myColor) return { error: 'Not your turn' };
-  if (ls.diceRolled) return { error: 'Already rolled' };
-  if (ls.winner) return { error: 'Game over' };
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(doc(db, 'rooms', roomId));
+    const room = snap.data();
+    const ls = room.ludoState;
 
-  const value = Math.floor(Math.random() * 6) + 1;
+    const myColor = ls.colorMap[userId];
+    if (ls.currentTurn !== myColor) { result = { error: 'Not your turn' }; return; }
+    if (ls.diceRolled)              { result = { error: 'Already rolled' }; return; }
+    if (ls.winner)                  { result = { error: 'Game over' };      return; }
 
-  // Check if any move is possible with this value
-  const movable = getMovablePieceIds(myColor, ls.pieces[myColor], value);
-  const noMoves = movable.length === 0;
+    const value = Math.floor(Math.random() * 6) + 1;
 
-  const newConsecSixes = value === 6 ? ls.consecutiveSixes + 1 : 0;
-  const forcedSkip = newConsecSixes >= 3; // 3 consecutive sixes = lose turn
+    const movable = getMovablePieceIds(myColor, ls.pieces[myColor], value);
+    const noMoves = movable.length === 0;
 
-  await safeUpdateDoc(doc(db, 'rooms', roomId), {
-    'ludoState.diceValue': value,
-    'ludoState.diceRolled': true,
-    'ludoState.consecutiveSixes': forcedSkip ? 0 : newConsecSixes,
+    const newConsecSixes = value === 6 ? ls.consecutiveSixes + 1 : 0;
+    const forcedSkip = newConsecSixes >= 3;
+
+    const updates = {
+      'ludoState.diceValue': value,
+      'ludoState.diceRolled': true,
+      'ludoState.consecutiveSixes': forcedSkip ? 0 : newConsecSixes,
+    };
+
+    if (noMoves || forcedSkip) {
+      const nextColor = getNextColor(myColor, ls.activeColors);
+      updates['ludoState.currentTurn'] = nextColor;
+      updates['ludoState.diceValue']   = null;
+      updates['ludoState.diceRolled']  = false;
+      updates['ludoState.consecutiveSixes'] = 0;
+    }
+
+    tx.update(doc(db, 'rooms', roomId), updates);
+    result = { value, movable, noMoves, forcedSkip };
   });
 
-  // Auto-advance turn if no valid moves or forced skip
-  if (noMoves || forcedSkip) {
-    const msg = forcedSkip
-      ? `🎲 ${ls.colorMap[userId]?.toUpperCase()} rolled three 6s — turn forfeited!`
-      : `🎲 ${myColor.toUpperCase()} rolled ${value} — no valid moves, turn skipped.`;
-    await sendSystemMessage(roomId, msg);
-    await advanceTurn(roomId, myColor, ls.activeColors, false);
+  // System messages outside transaction (Firestore transactions cannot call other async ops)
+  if (result.noMoves && !result.forcedSkip) {
+    const snap = await getDoc(doc(db, 'rooms', roomId));
+    const ls = snap.data()?.ludoState;
+    const myColor = ls?.colorMap[userId];
+    await sendSystemMessage(roomId,
+      `🎲 ${myColor?.toUpperCase()} rolled ${result.value} — no valid moves, turn skipped.`);
+  } else if (result.forcedSkip) {
+    const snap = await getDoc(doc(db, 'rooms', roomId));
+    const ls = snap.data()?.ludoState;
+    const myColor = ls?.colorMap[userId];
+    await sendSystemMessage(roomId,
+      `🎲 ${myColor?.toUpperCase()} rolled three 6s — turn forfeited!`);
   }
 
-  return { value, movable, noMoves, forcedSkip };
+  return result;
 }
 
 // ─── Move Piece ────────────────────────────────────────────────────────────
+// FIX: wrapped in runTransaction to prevent duplicate moves from double-tap / retry
 
 export async function movePiece(roomId, userId, pieceId) {
-  const snap = await getDoc(doc(db, 'rooms', roomId));
-  const room = snap.data();
-  const ls = room.ludoState;
+  let result = {};
+  let postMoveMessages = [];
 
-  const myColor = ls.colorMap[userId];
-  if (ls.currentTurn !== myColor) return { error: 'Not your turn' };
-  if (!ls.diceRolled) return { error: 'Roll dice first' };
+  await runTransaction(db, async (tx) => {
+    postMoveMessages = [];
 
-  const piece = ls.pieces[myColor].find(p => p.id === pieceId);
-  if (!piece) return { error: 'Invalid piece' };
+    const snap = await tx.get(doc(db, 'rooms', roomId));
+    const room = snap.data();
+    const ls = room.ludoState;
 
-  const diceValue = ls.diceValue;
+    const myColor = ls.colorMap[userId];
+    if (ls.currentTurn !== myColor) { result = { error: 'Not your turn' }; return; }
+    if (!ls.diceRolled)             { result = { error: 'Roll dice first' }; return; }
 
-  // Validate move
-  if (piece.step === -1 && diceValue !== 6) return { error: 'Need 6 to enter' };
-  if (piece.step === TOTAL_STEPS) return { error: 'Piece already won' };
+    const piece = ls.pieces[myColor].find(p => p.id === pieceId);
+    if (!piece) { result = { error: 'Invalid piece' }; return; }
 
-  const fromStep = piece.step;
-  const toStep = piece.step === -1 ? 0 : Math.min(piece.step + diceValue, TOTAL_STEPS);
+    const diceValue = ls.diceValue;
 
-  if (toStep > TOTAL_STEPS) return { error: 'Overshoots center' };
+    if (piece.step === -1 && diceValue !== 6) { result = { error: 'Need 6 to enter' }; return; }
+    if (piece.step === TOTAL_STEPS)           { result = { error: 'Piece already won' }; return; }
 
-  // Build updated pieces
-  const newPieces = { ...ls.pieces };
-  newPieces[myColor] = newPieces[myColor].map(p =>
-    p.id === pieceId ? { ...p, step: toStep } : p
-  );
+    const fromStep = piece.step;
+    const toStep = piece.step === -1 ? 0 : Math.min(piece.step + diceValue, TOTAL_STEPS);
 
-  let captureMsg = null;
+    if (toStep > TOTAL_STEPS) { result = { error: 'Overshoots center' }; return; }
 
-  // Check captures (only on main path steps 0-51)
-  if (toStep < 52 && toStep >= 0) {
-    const mainIdx = getMainPathIndex(myColor, toStep);
-    if (mainIdx >= 0) {
-      // Check all other active colors
-      for (const otherColor of ls.activeColors) {
-        if (otherColor === myColor) continue;
-        const captured = newPieces[otherColor].filter(p => {
-          if (p.step < 0 || p.step >= 52) return false;
-          const otherMainIdx = getMainPathIndex(otherColor, p.step);
-          return otherMainIdx === mainIdx && canCapture(myColor, otherColor, mainIdx);
-        });
-        if (captured.length > 0) {
-          newPieces[otherColor] = newPieces[otherColor].map(p =>
-            captured.find(c => c.id === p.id) ? { ...p, step: -1 } : p
-          );
-          captureMsg = `💥 ${myColor.toUpperCase()} sent ${otherColor.toUpperCase()}'s piece home!`;
+    const newPieces = { ...ls.pieces };
+    newPieces[myColor] = newPieces[myColor].map(p =>
+      p.id === pieceId ? { ...p, step: toStep } : p
+    );
+
+    let captureMsg = null;
+
+    // Check captures (only on main path steps 0–51)
+    if (toStep < 52 && toStep >= 0) {
+      const mainIdx = getMainPathIndex(myColor, toStep);
+      if (mainIdx >= 0) {
+        for (const otherColor of ls.activeColors) {
+          if (otherColor === myColor) continue;
+          const captured = newPieces[otherColor].filter(p => {
+            if (p.step < 0 || p.step >= 52) return false;
+            const otherMainIdx = getMainPathIndex(otherColor, p.step);
+            return otherMainIdx === mainIdx && canCapture(myColor, otherColor, mainIdx);
+          });
+          if (captured.length > 0) {
+            newPieces[otherColor] = newPieces[otherColor].map(p =>
+              captured.find(c => c.id === p.id) ? { ...p, step: -1 } : p
+            );
+            captureMsg = `💥 ${myColor.toUpperCase()} sent ${otherColor.toUpperCase()}'s piece home!`;
+          }
         }
       }
     }
+
+    // Check win — all 4 pieces reached center
+    const allWon = newPieces[myColor].every(p => p.step >= TOTAL_STEPS);
+
+    const getAnotherTurn = (diceValue === 6 || captureMsg !== null) && !allWon;
+
+    const lastMove = { color: myColor, pieceId, from: fromStep, to: toStep };
+
+    const updates = {
+      'ludoState.pieces': newPieces,
+      'ludoState.diceValue': null,
+      'ludoState.diceRolled': false,
+      'ludoState.lastMove': lastMove,
+      'ludoState.turnCount': ls.turnCount + 1,
+    };
+
+    if (allWon) {
+      // FIX: store both color (for UI coloring) and uid (for player lookup)
+      const newRankings = [...(ls.rankings || []), userId];
+      const allFinished = newRankings.length >= ls.activeColors.length;
+
+      updates['ludoState.rankings'] = newRankings;
+
+      if (allFinished || newRankings.length === 1) {
+        // First finisher ends the game
+        updates['ludoState.winner']    = myColor;
+        updates['ludoState.winnerUid'] = userId;
+        updates['status']              = 'finished';
+      }
+    } else if (!getAnotherTurn) {
+      const nextColor = getNextColor(myColor, ls.activeColors);
+      updates['ludoState.currentTurn'] = nextColor;
+      updates['ludoState.consecutiveSixes'] = 0;
+    }
+
+    tx.update(doc(db, 'rooms', roomId), updates);
+
+    // Queue messages to send after transaction commits
+    if (captureMsg)         postMoveMessages.push(captureMsg);
+    if (toStep >= TOTAL_STEPS) postMoveMessages.push(`🏠 ${myColor.toUpperCase()} got a piece home!`);
+    if (allWon)             postMoveMessages.push(`🏆 ${myColor.toUpperCase()} wins the game!`);
+    else if (getAnotherTurn) postMoveMessages.push(`🎲 ${myColor.toUpperCase()} gets another turn!`);
+
+    result = { success: true, toStep, captured: !!captureMsg, won: allWon, anotherTurn: getAnotherTurn };
+  });
+
+  // Send system messages after transaction completes
+  for (const msg of postMoveMessages) {
+    await sendSystemMessage(roomId, msg).catch(console.error);
   }
 
-  // Check win
-  const allWon = newPieces[myColor].every(p => p.step >= TOTAL_STEPS);
-
-  // Determine if same player gets another turn (rolled 6 OR captured a piece)
-  const getAnotherTurn = (diceValue === 6 || captureMsg !== null) && !allWon;
-
-  const lastMove = { color: myColor, pieceId, from: fromStep, to: toStep };
-
-  const updates = {
-    'ludoState.pieces': newPieces,
-    'ludoState.diceValue': null,
-    'ludoState.diceRolled': false,
-    'ludoState.lastMove': lastMove,
-    'ludoState.turnCount': ls.turnCount + 1,
-  };
-
-  if (allWon) {
-    updates['ludoState.winner'] = myColor;
-    updates['status'] = 'finished';
-  } else if (!getAnotherTurn) {
-    const nextColor = getNextColor(myColor, ls.activeColors);
-    updates['ludoState.currentTurn'] = nextColor;
-    updates['ludoState.consecutiveSixes'] = 0;
-  }
-
-  await safeUpdateDoc(doc(db, 'rooms', roomId), updates);
-
-  // System messages
-  if (captureMsg) await sendSystemMessage(roomId, captureMsg);
-  if (toStep >= TOTAL_STEPS) {
-    await sendSystemMessage(roomId, `🏠 ${myColor.toUpperCase()} got a piece home!`);
-  }
-  if (allWon) {
-    await sendSystemMessage(roomId, `🏆 ${myColor.toUpperCase()} wins the game!`);
-  } else if (getAnotherTurn) {
-    await sendSystemMessage(roomId, `🎲 ${myColor.toUpperCase()} gets another turn!`);
-  }
-
-  return { success: true, toStep, captured: !!captureMsg, won: allWon, anotherTurn: getAnotherTurn };
+  return result;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -188,23 +227,12 @@ export async function movePiece(roomId, userId, pieceId) {
 export function getMovablePieceIds(color, pieces, diceValue) {
   return pieces
     .filter(p => {
-      if (p.step >= TOTAL_STEPS) return false;             // already won
-      if (p.step === -1) return diceValue === 6;            // need 6 to enter
+      if (p.step >= TOTAL_STEPS) return false;
+      if (p.step === -1) return diceValue === 6;
       const newStep = p.step + diceValue;
-      return newStep <= TOTAL_STEPS;                         // can't overshoot
+      return newStep <= TOTAL_STEPS;
     })
     .map(p => p.id);
-}
-
-async function advanceTurn(roomId, currentColor, activeColors, anotherTurn) {
-  if (anotherTurn) return; // same player goes again
-  const nextColor = getNextColor(currentColor, activeColors);
-  await safeUpdateDoc(doc(db, 'rooms', roomId), {
-    'ludoState.currentTurn': nextColor,
-    'ludoState.diceValue': null,
-    'ludoState.diceRolled': false,
-    'ludoState.consecutiveSixes': 0,
-  });
 }
 
 function getNextColor(current, activeColors) {
@@ -213,6 +241,7 @@ function getNextColor(current, activeColors) {
 }
 
 // ─── Reset Ludo ────────────────────────────────────────────────────────────
+// FIX: explicitly clear winnerUid and rankings so stale data never leaks
 
 export async function resetLudoGame(roomId) {
   const snap = await getDoc(doc(db, 'rooms', roomId));
@@ -230,6 +259,8 @@ export async function resetLudoGame(roomId) {
     'ludoState.diceRolled': false,
     'ludoState.consecutiveSixes': 0,
     'ludoState.winner': null,
+    'ludoState.winnerUid': null,   // FIX: clear uid
+    'ludoState.rankings': [],      // FIX: clear rankings
     'ludoState.lastMove': null,
     'ludoState.turnCount': 0,
   });

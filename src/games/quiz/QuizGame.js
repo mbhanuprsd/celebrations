@@ -2,12 +2,14 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Box, Typography, Button, Avatar, Chip, LinearProgress, CircularProgress,
+  Modal,
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import ReplayIcon from '@mui/icons-material/Replay';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import { useGameContext } from '../../context/GameContext';
 import { useRoom } from '../../hooks/useRoom';
 import { useGameGuard } from '../../hooks/useGameSession';
@@ -19,6 +21,7 @@ import { generateQuizQuestions } from './quizGeminiService';
 import {
   OPTION_LABELS, OPTION_COLORS, QUIZ_SETTINGS, TOPIC_MAP,
 } from './quizConstants';
+import { sendSystemMessage } from '../../firebase/services';
 
 // ─── Winner overlay ──────────────────────────────────────────────────────
 function WinnerOverlay({ q, room, isHost, onReset, onLeave, resetting }) {
@@ -119,6 +122,31 @@ function Scoreboard({ q, room }) {
   );
 }
 
+// ─── Mobile scoreboard modal ─────────────────────────────────────────────
+function ScoreModal({ open, onClose, q, room }) {
+  return (
+    <Modal open={open} onClose={onClose}>
+      <Box sx={{
+        position: 'absolute', top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        bgcolor: '#0e1520', border: '1px solid rgba(255,255,255,0.12)',
+        borderRadius: '16px', p: 3, minWidth: 280, maxWidth: '90vw',
+        outline: 'none',
+      }}>
+        <Typography sx={{ fontWeight: 900, color: '#ffd700', mb: 2, fontSize: '1rem' }}>
+          🏅 Standings
+        </Typography>
+        <Scoreboard q={q} room={room} />
+        <Button fullWidth onClick={onClose} variant="outlined"
+          sx={{ mt: 2, borderRadius: '10px', borderColor: 'rgba(255,255,255,0.15)',
+            color: '#8b949e', fontWeight: 700 }}>
+          Close
+        </Button>
+      </Box>
+    </Modal>
+  );
+}
+
 // ─── Option button ───────────────────────────────────────────────────────
 function OptionButton({ label, text, index, phase, myAnswer, correctIndex, allAnswers,
   playerCount, disabled, onClick }) {
@@ -187,7 +215,7 @@ function OptionButton({ label, text, index, phase, myAnswer, correctIndex, allAn
 
 // ─── Main component ──────────────────────────────────────────────────────
 export function QuizGame() {
-  const { state } = useGameContext();
+  const { state, notify } = useGameContext();
   const { leave } = useRoom();
   const { room, userId, roomId, isHost } = state;
   const q = room?.quizState;
@@ -198,6 +226,8 @@ export function QuizGame() {
 
   const [timeLeft, setTimeLeft] = useState(QUIZ_SETTINGS.answerTime);
   const [resetting, setResetting] = useState(false);
+  // FIX: mobile scoreboard modal
+  const [scoreOpen, setScoreOpen] = useState(false);
   const timerRef  = useRef(null);
   const revealRef = useRef(null);  // prevent double-fire on reveal/advance
 
@@ -209,7 +239,6 @@ export function QuizGame() {
     const start = q.questionStartTime;
     const total = QUIZ_SETTINGS.answerTime;
 
-    // Immediately reset to prevent stale time from previous question flashing
     setTimeLeft(total);
 
     const tick = () => {
@@ -223,12 +252,16 @@ export function QuizGame() {
     return () => clearInterval(timerRef.current);
   }, [q?.currentIndex, q?.phase, q?.questionStartTime]);
 
-  // ── Host auto-advance logic ───────────────────────────────────────────
-  // Use a ref for q so checkAdvance always reads the latest without being
-  // recreated on every answer (which was resetting revealRef mid-question).
-  const qRef = useRef(q);
-  useEffect(() => { qRef.current = q; }, [q]);
+  // ── Stable refs so callbacks don't depend on q / room directly ────────
+  const qRef    = useRef(q);
+  const roomRef = useRef(room);
+  useEffect(() => { qRef.current = q; },    [q]);
+  useEffect(() => { roomRef.current = room; }, [room]);
 
+  // ── Host auto-advance logic ───────────────────────────────────────────
+  // FIX: run checkAdvance reactively on every snapshot (answers change),
+  // instead of polling every 500 ms. A separate timeout handles the
+  // time-based fallback to avoid re-creating the effect on each answer.
   const checkAdvance = useCallback(async () => {
     const cur = qRef.current;
     if (!isHost || !cur || cur.phase !== 'question') return;
@@ -238,19 +271,28 @@ export function QuizGame() {
       revealRef.current = true;
       await revealQuizAnswer(roomId);
     }
-  }, [isHost, roomId]);  // stable — no longer depends on q directly
+  }, [isHost, roomId]);
 
-  // Reset revealRef only when the question index changes (not on every answer)
+  // Reset revealRef only when the question index changes
   useEffect(() => {
     revealRef.current = false;
   }, [q?.currentIndex]);
 
-  // Poll for all-answered / time-out (host only)
+  // FIX: react to answer changes directly instead of 500 ms polling
   useEffect(() => {
     if (!isHost || !q || q.phase !== 'question') return;
-    const id = setInterval(checkAdvance, 500);
-    return () => clearInterval(id);
-  }, [q?.currentIndex, q?.phase, isHost, checkAdvance]);
+    checkAdvance();
+  }, [q?.answers, q?.phase, isHost, checkAdvance]);
+
+  // Time-out fallback — fires once when the timer reaches zero
+  useEffect(() => {
+    if (!isHost || !q || q.phase !== 'question') return;
+    const remaining = Math.max(
+      0, QUIZ_SETTINGS.answerTime - (Date.now() - q.questionStartTime) / 1000
+    );
+    const id = setTimeout(checkAdvance, remaining * 1000 + 300); // +300 ms buffer
+    return () => clearTimeout(id);
+  }, [q?.currentIndex, q?.phase, isHost, checkAdvance, q?.questionStartTime]);
 
   // Auto-advance from reveal after revealTime (host only)
   useEffect(() => {
@@ -262,16 +304,24 @@ export function QuizGame() {
   }, [q?.currentIndex, q?.phase, isHost, roomId]);
 
   // ── Answer handler ────────────────────────────────────────────────────
+  // FIX: use qRef so this callback is not recreated on every snapshot
   const handleAnswer = useCallback(async (idx) => {
-    if (!q || q.phase !== 'question' || q.answers?.[userId]) return;
-    await submitQuizAnswer(roomId, userId, idx).catch(console.error);
-  }, [q, roomId, userId]);
+    const cur = qRef.current;
+    if (!cur || cur.phase !== 'question' || cur.answers?.[userId]) return;
+    await submitQuizAnswer(roomId, userId, idx).catch(e => {
+      console.error(e);
+      // FIX: surface errors to the player instead of swallowing silently
+      notify('Failed to submit answer — please try again.', 'error');
+    });
+  }, [roomId, userId, notify]);
 
   // ── Play Again ────────────────────────────────────────────────────────
   const handleReset = async () => {
     if (resetting) return;
     setResetting(true);
     try {
+      // FIX: notify all players that new questions are being generated
+      await sendSystemMessage(roomId, '⏳ Host is generating new questions…');
       const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
       const questions = await generateQuizQuestions(
         q.topic, QUIZ_SETTINGS.questionCount, apiKey
@@ -279,6 +329,7 @@ export function QuizGame() {
       await resetQuizGame(roomId, q.playerOrder, questions, q.topic);
     } catch (e) {
       console.error('Reset failed', e);
+      notify('Failed to generate new questions — please try again.', 'error');
     } finally {
       setResetting(false);
     }
@@ -287,8 +338,6 @@ export function QuizGame() {
   if (!room || !q || !q.playerOrder) return null;
 
   const currentQ   = q.questions?.[q.currentIndex];
-  const myAnswer   = q.answers?.[userId];
-  // topic is now a plain label string (e.g. "Indian History"), find matching preset for icon/color
   const topicPreset = Object.values(TOPIC_MAP).find(
     t => t.label.toLowerCase() === (q.topic || '').toLowerCase()
   );
@@ -319,10 +368,13 @@ export function QuizGame() {
             sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#8b949e',
               fontWeight: 800, fontSize: '0.72rem' }} />
         )}
-        <Chip label={`${answered}/${total} answered`} size="small"
-          sx={{ bgcolor: answered === total ? 'rgba(6,214,160,0.2)' : 'rgba(255,255,255,0.06)',
-            color: answered === total ? '#06D6A0' : '#8b949e',
-            fontWeight: 700, fontSize: '0.7rem' }} />
+        {/* FIX: hide "answered" chip in finished phase — it shows stale 0/N */}
+        {q.phase !== 'finished' && (
+          <Chip label={`${answered}/${total} answered`} size="small"
+            sx={{ bgcolor: answered === total ? 'rgba(6,214,160,0.2)' : 'rgba(255,255,255,0.06)',
+              color: answered === total ? '#06D6A0' : '#8b949e',
+              fontWeight: 700, fontSize: '0.7rem' }} />
+        )}
       </Box>
 
       {/* ── Timer bar ── */}
@@ -353,7 +405,6 @@ export function QuizGame() {
               <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: '16px', p: { xs: 2, sm: 2.5 }, mb: 2 }}>
-                {/* Timer number */}
                 {q.phase === 'question' && (
                   <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                     <Typography sx={{ color: '#8b949e', fontSize: '0.72rem' }}>
@@ -379,18 +430,18 @@ export function QuizGame() {
                   <OptionButton key={idx}
                     label={OPTION_LABELS[idx]} text={opt} index={idx}
                     phase={q.phase}
-                    myAnswer={myAnswer}
+                    myAnswer={q.answers?.[userId]}
                     correctIndex={q.phase === 'reveal' ? currentQ.correctIndex : -1}
                     allAnswers={q.answers}
                     playerCount={total}
-                    disabled={!!myAnswer || q.phase !== 'question'}
+                    disabled={!!q.answers?.[userId] || q.phase !== 'question'}
                     onClick={() => handleAnswer(idx)}
                   />
                 ))}
               </Box>
 
               {/* Waiting message */}
-              {q.phase === 'question' && myAnswer && !isHost && (
+              {q.phase === 'question' && q.answers?.[userId] && !isHost && (
                 <Box sx={{ textAlign: 'center', mt: 1 }}>
                   <Typography sx={{ color: '#8b949e', fontSize: '0.78rem' }}>
                     ✅ Answered! Waiting for others…
@@ -398,21 +449,21 @@ export function QuizGame() {
                 </Box>
               )}
 
-              {/* Reveal: score feedback for this question */}
-              {q.phase === 'reveal' && myAnswer && (
+              {/* Reveal: score feedback */}
+              {q.phase === 'reveal' && q.answers?.[userId] && (
                 <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
                   <Box sx={{ textAlign: 'center', mt: 1.5, p: 1.5, borderRadius: '12px',
-                    bgcolor: myAnswer.correct ? 'rgba(6,214,160,0.1)' : 'rgba(239,68,68,0.08)',
-                    border: `1px solid ${myAnswer.correct ? 'rgba(6,214,160,0.3)' : 'rgba(239,68,68,0.2)'}` }}>
+                    bgcolor: q.answers[userId].correct ? 'rgba(6,214,160,0.1)' : 'rgba(239,68,68,0.08)',
+                    border: `1px solid ${q.answers[userId].correct ? 'rgba(6,214,160,0.3)' : 'rgba(239,68,68,0.2)'}` }}>
                     <Typography sx={{ fontWeight: 900, fontSize: '1rem',
-                      color: myAnswer.correct ? '#06D6A0' : '#ef4444' }}>
-                      {myAnswer.correct ? `+${myAnswer.score} pts` : 'Wrong answer'}
+                      color: q.answers[userId].correct ? '#06D6A0' : '#ef4444' }}>
+                      {q.answers[userId].correct ? `+${q.answers[userId].score} pts` : 'Wrong answer'}
                     </Typography>
                   </Box>
                 </motion.div>
               )}
-              {/* Reveal: player ran out of time (no answer recorded) */}
-              {q.phase === 'reveal' && !myAnswer && (
+              {/* Reveal: timed out */}
+              {q.phase === 'reveal' && !q.answers?.[userId] && (
                 <Box sx={{ textAlign: 'center', mt: 1.5, p: 1.5, borderRadius: '12px',
                   bgcolor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <Typography sx={{ color: '#ef4444', fontWeight: 700, fontSize: '0.9rem' }}>
@@ -434,19 +485,34 @@ export function QuizGame() {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         px: 2, py: 1, bgcolor: 'rgba(0,0,0,0.5)',
         borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
-        {/* Mobile score chips */}
-        <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 0.8, flexWrap: 'wrap' }}>
+        {/* FIX: mobile score chips now show name (first word) + score,
+            plus a tap-to-open standings button */}
+        <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 0.8, flexWrap: 'wrap',
+          alignItems: 'center', flex: 1 }}>
           {[...(q.playerOrder || [])].sort((a, b) => (q.scores[b] || 0) - (q.scores[a] || 0))
-            .slice(0, 4).map((uid, i) => (
-            <Chip key={uid} size="small"
-              avatar={<Avatar sx={{ bgcolor: OPTION_COLORS[i % 4], width: 18, height: 18, fontSize: '0.55rem' }}>
-                {(room.players?.[uid]?.name || '?').charAt(0)}
-              </Avatar>}
-              label={q.scores[uid] || 0}
-              sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: '#e6edf3',
-                fontSize: '0.68rem', height: 22 }}
-            />
-          ))}
+            .slice(0, 3).map((uid, i) => {
+            const name = room.players?.[uid]?.name || '?';
+            const firstName = name.split(' ')[0];
+            return (
+              <Chip key={uid} size="small"
+                avatar={<Avatar sx={{ bgcolor: OPTION_COLORS[i % 4], width: 18, height: 18, fontSize: '0.55rem' }}>
+                  {name.charAt(0)}
+                </Avatar>}
+                label={`${firstName}: ${q.scores[uid] || 0}`}
+                sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: '#e6edf3',
+                  fontSize: '0.68rem', height: 22 }}
+              />
+            );
+          })}
+          {/* FIX: standings button opens full scoreboard modal on mobile */}
+          <Chip
+            size="small"
+            icon={<LeaderboardIcon sx={{ fontSize: '0.75rem !important' }} />}
+            label="Scores"
+            onClick={() => setScoreOpen(true)}
+            sx={{ bgcolor: 'rgba(255,215,0,0.1)', color: '#ffd700', fontSize: '0.65rem',
+              height: 22, cursor: 'pointer', display: { xs: 'flex', md: 'none' } }}
+          />
         </Box>
         <Button size="small" variant="outlined" startIcon={<ExitToAppIcon sx={{ fontSize: 14 }} />}
           onClick={requestLeave}
@@ -466,6 +532,9 @@ export function QuizGame() {
             onReset={handleReset} onLeave={requestLeave} resetting={resetting} />
         )}
       </AnimatePresence>
+
+      {/* ── Mobile scoreboard modal ── */}
+      <ScoreModal open={scoreOpen} onClose={() => setScoreOpen(false)} q={q} room={room} />
 
       <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
     </Box>

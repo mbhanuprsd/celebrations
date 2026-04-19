@@ -361,7 +361,7 @@ export function DrawingGame() {
           background: 'linear-gradient(135deg, #4CC9F0, #F72585)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>
-          Scribbly
+          Draw & Guess
         </Typography>
         <Box display="flex" alignItems="center" gap={0.8}>
           {isDrawer && isPlaying && (

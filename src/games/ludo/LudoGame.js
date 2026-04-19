@@ -18,10 +18,13 @@ import { saveGameHistory } from '../../firebase/services';
 // ─── Winner overlay ─────────────────────────────────────────────────────────
 function LudoWinnerOverlay({ ls, room, isHost, onReset, onLeave }) {
   const medals = ['🥇','🥈','🥉','🏅'];
-  const rankings = ls?.rankings || (ls?.winner ? [ls.winner] : []);
+
+  // FIX: rankings is now an array of uids (written by ludoFirebaseService).
+  // Build a complete ordered list: ranked players first, then any unranked.
+  const rankings = ls?.rankings || [];
   const allUids = Object.keys(room?.players || {});
-  // Any uid not in rankings goes at the end
   const ordered = [...rankings, ...allUids.filter(u => !rankings.includes(u))];
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
       style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex',
@@ -42,6 +45,7 @@ function LudoWinnerOverlay({ ls, room, isHost, onReset, onLeave }) {
           </Typography>
           <Box mt={2} mb={3}>
             {ordered.map((uid, i) => {
+              // FIX: uid is now a real player uid, not a color string
               const player = room?.players?.[uid];
               const colorKey = ls?.colorMap?.[uid];
               const c = LUDO_COLORS[colorKey];
@@ -241,49 +245,64 @@ export function LudoGame() {
   const canRoll    = isMyTurn && !ls?.diceRolled && !ls?.winner;
   const colorInfo  = LUDO_COLORS[myColor] || LUDO_COLORS.red;
 
-  // Save game history once when a winner is declared
+  // FIX: use a roomRef so saveGameHistory always reads the latest room data
+  // without a stale closure, avoiding the eslint-disable workaround.
   const ludoSavedRef = useRef(false);
+  const roomRef      = useRef(room);
+  useEffect(() => { roomRef.current = room; }, [room]);
+
   useEffect(() => {
-    if (!ls?.winner || !userId || !room || ludoSavedRef.current) return;
+    if (!ls?.winner || !userId || ludoSavedRef.current) return;
     ludoSavedRef.current = true;
-    const rankings = ls.rankings || [ls.winner];
+    const r = roomRef.current;
+    if (!r) return;
+
+    // FIX: ls.rankings is now an array of uids; winnerUid is the first finisher's uid
+    const rankings = ls.rankings || (ls.winnerUid ? [ls.winnerUid] : []);
     const myRank = rankings.indexOf(userId) + 1 || rankings.length + 1;
-    const winnerPlayer = room.players?.[ls.winner];
-    // Build ranked list — players in rankings order first, then unranked after
-    const rankedUids = [...rankings];
-    const allUids = Object.keys(room.players || {});
-    const unrankedUids = allUids.filter(uid => !rankedUids.includes(uid));
-    const orderedUids = [...rankedUids, ...unrankedUids];
+    const winnerPlayer = r.players?.[ls.winnerUid];
+    const allUids = Object.keys(r.players || {});
+    const unrankedUids = allUids.filter(uid => !rankings.includes(uid));
+    const orderedUids = [...rankings, ...unrankedUids];
+
     saveGameHistory(userId, {
       gameType: 'ludo',
-      roomId: room.id,
+      roomId: r.id,
       myRank,
       totalPlayers: allUids.length,
       winnerName: winnerPlayer?.name || '',
       rankedPlayers: orderedUids.map((uid, i) => ({
-        name: room.players?.[uid]?.name || uid,
+        name: r.players?.[uid]?.name || uid,
         score: null,
         rank: i + 1,
         isMe: uid === userId,
       })),
     });
-  }, [ls?.winner]); // eslint-disable-line
+  }, [ls?.winner, userId]);  // roomRef is stable — no need to list it
 
   const handleRoll = useCallback(async () => {
     if (actionPending) return;
     setActionPending(true);
     try { await rollDice(roomId, userId); }
-    catch (e) { console.error(e); }
+    catch (e) {
+      console.error(e);
+      // FIX: surface errors to the player
+      notify('Dice roll failed — please try again.', 'error');
+    }
     finally { setActionPending(false); }
-  }, [roomId, userId, actionPending]);
+  }, [roomId, userId, actionPending, notify]);
 
   const handleMovePiece = useCallback(async (pieceId) => {
     if (actionPending || !isMyTurn || !ls?.diceRolled) return;
     setActionPending(true);
     try { await movePiece(roomId, userId, pieceId); }
-    catch (e) { console.error(e); }
+    catch (e) {
+      console.error(e);
+      // FIX: surface errors to the player
+      notify('Move failed — please try again.', 'error');
+    }
     finally { setActionPending(false); }
-  }, [roomId, userId, isMyTurn, ls?.diceRolled, actionPending]);
+  }, [roomId, userId, isMyTurn, ls?.diceRolled, actionPending, notify]);
 
   if (!room || !ls) return null;
 
@@ -295,12 +314,13 @@ export function LudoGame() {
     colorToUid[color]    = uid;
   });
 
-  // Corner positions: red=top-left, blue=top-right, green=bottom-right, yellow=bottom-left
+  // FIX: use percentage-based bottom offset for green/yellow corner cards so
+  // they don't overlap the board on small screens (was hardcoded `bottom: 76`).
   const cornerLayout = [
     { color: 'red',    corner: { top: 6, left: 6 } },
     { color: 'blue',   corner: { top: 6, right: 6 } },
-    { color: 'green',  corner: { bottom: 76, right: 6 } },
-    { color: 'yellow', corner: { bottom: 76, left: 6 } },
+    { color: 'green',  corner: { bottom: 'calc(13% + 4px)', right: 6 } },
+    { color: 'yellow', corner: { bottom: 'calc(13% + 4px)', left: 6 } },
   ];
 
   return (
@@ -421,13 +441,21 @@ export function LudoGame() {
         {/* Reset (host only, after winner) */}
         {isHost && ls.winner ? (
           <Button size="small" variant="outlined" startIcon={<ReplayIcon sx={{ fontSize: 14 }} />}
-            onClick={async () => { await resetLudoGame(roomId); notify('Reset!'); }}
+            onClick={async () => {
+              try {
+                await resetLudoGame(roomId);
+                notify('Reset!');
+              } catch (e) {
+                console.error(e);
+                notify('Reset failed — please try again.', 'error');
+              }
+            }}
             sx={{ fontSize: '0.68rem', py: 0.5, px: 1.2, borderRadius: 2,
               borderColor: 'rgba(255,255,255,0.12)', color: '#8b949e' }}>
             Again
           </Button>
         ) : (
-          <Box sx={{ minWidth: 44 }} /> // spacer to keep dice centred
+          <Box sx={{ minWidth: 44 }} />
         )}
       </Box>
 
@@ -439,7 +467,15 @@ export function LudoGame() {
         {ls?.winner && (
           <LudoWinnerOverlay
             ls={ls} room={room} isHost={isHost}
-            onReset={async () => { await resetLudoGame(roomId); notify('Reset!'); }}
+            onReset={async () => {
+              try {
+                await resetLudoGame(roomId);
+                notify('Reset!');
+              } catch (e) {
+                console.error(e);
+                notify('Reset failed — please try again.', 'error');
+              }
+            }}
             onLeave={requestLeave}
           />
         )}

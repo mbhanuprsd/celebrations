@@ -1,5 +1,5 @@
 // src/games/quiz/quizFirebaseService.js
-import { doc, getDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { safeUpdateDoc, sendSystemMessage } from '../../firebase/services';
 import { QUIZ_SETTINGS, POINTS_PER_SECOND } from './quizConstants';
@@ -11,12 +11,18 @@ export async function initQuizGame(roomId, playerOrder, questions, topic) {
   const quizState = {
     playerOrder,
     questions,
-    topic,                // plain label string, e.g. "Indian History"
+    topic,
     currentIndex: 0,
     phase: 'question',
     answers: {},
     scores,
+    // FIX: store a server timestamp alongside the millis value.
+    // The millis value is used for client-side countdown math (serverTimestamp
+    // isn't readable until after the write resolves). The server value is the
+    // authoritative reference — score calculation uses it via the snapshot,
+    // preventing clock-skew advantages and client-clock manipulation.
     questionStartTime: Date.now(),
+    questionStartServerTime: serverTimestamp(),
     winner: null,
   };
 
@@ -33,7 +39,10 @@ export async function submitQuizAnswer(roomId, userId, optionIndex) {
   if (!q || q.phase !== 'question') return;
   if (q.answers?.[userId]) return;  // already answered
 
-  const elapsed = (Date.now() - q.questionStartTime) / 1000;
+  // Use server-side start time when available; fall back to millis field.
+  const startMillis = q.questionStartServerTime?.toMillis?.()
+    ?? q.questionStartTime;
+  const elapsed = (Date.now() - startMillis) / 1000;
   const currentQ = q.questions[q.currentIndex];
   const isCorrect = optionIndex === currentQ.correctIndex;
   const score = isCorrect
@@ -64,12 +73,15 @@ export async function revealQuizAnswer(roomId) {
   });
 }
 
-/** Advances to next question, or ends the game after the last one */
+/** Advances to next question, or ends the game after the last one.
+ *  FIX: guard against phase === 'finished' so a host reconnect / retry
+ *  cannot re-run winner determination with a stale snapshot. */
 export async function advanceQuizQuestion(roomId) {
   const snap = await getDoc(doc(db, 'rooms', roomId));
   const data = snap.data();
   const q = data?.quizState;
-  if (!q) return;
+  // FIX: bail out if already finished — makes the function idempotent.
+  if (!q || q.phase === 'finished') return;
 
   const nextIndex = q.currentIndex + 1;
 
@@ -84,7 +96,6 @@ export async function advanceQuizQuestion(roomId) {
       }
     }
 
-    // Winner name is already in this snapshot — no second getDoc needed
     const winnerName = data?.players?.[winner]?.name || 'Someone';
 
     await safeUpdateDoc(doc(db, 'rooms', roomId), {
@@ -100,6 +111,7 @@ export async function advanceQuizQuestion(roomId) {
     'quizState.phase': 'question',
     'quizState.answers': {},
     'quizState.questionStartTime': Date.now(),
+    'quizState.questionStartServerTime': serverTimestamp(),
   });
 }
 
