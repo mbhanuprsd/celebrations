@@ -517,16 +517,20 @@ function GamesPanel({ playerName, onLocalError, localError }) {
   const [ludoSettings, setLudoSettings] = useState({ maxPlayers: 4 });
   const [slSettings, setSlSettings] = useState({ maxPlayers: 4 });
   const [unoSettings, setUnoSettings] = useState({ maxPlayers: 6 });
-  const [quizSettings, setQuizSettings] = useState({ maxPlayers: 12, questionCount: 8, topic: 'general' });
+  const [quizSettings, setQuizSettings] = useState({ maxPlayers: 12, questionCount: 8, topic: 'General Knowledge' });
   const [resumeSession, setResumeSession] = useState(getStoredSession);
   const meta = GAME_META[gameType];
 
   const handleCreate = async () => {
     onLocalError('');
+    if (gameType === 'quiz' && !quizSettings.topic.trim()) {
+      onLocalError('Please enter a topic for the quiz.');
+      return;
+    }
     const gs = gameType === 'ludo' ? ludoSettings
       : gameType === 'snakeladder' ? slSettings
         : gameType === 'uno' ? unoSettings
-          : gameType === 'quiz' ? quizSettings
+          : gameType === 'quiz' ? { ...quizSettings, topic: quizSettings.topic.trim() }
             : settings;
     await create(playerName, gs, gameType);
   };
@@ -602,20 +606,46 @@ function GamesPanel({ playerName, onLocalError, localError }) {
                       color="#4CC9F0" min={5} max={15} step={1}
                       marks={[{ value: 5, label: '5' }, { value: 8, label: '8' }, { value: 15, label: '15' }]}
                       onChange={v => setQuizSettings(s => ({ ...s, questionCount: v }))} />
-                    <Box sx={{ mt: 1.5 }}>
+                    <Box sx={{ mt: 2 }}>
                       <Typography sx={{ color: '#8b949e', fontSize: '0.73rem', mb: 1, fontWeight: 700 }}>
                         🎯 Topic
+                      </Typography>
+                      {/* Free-form topic input */}
+                      <TextField
+                        fullWidth
+                        placeholder="e.g. Indian History, Marvel Movies, Cricket…"
+                        value={quizSettings.topic}
+                        onChange={e => setQuizSettings(s => ({ ...s, topic: e.target.value }))}
+                        inputProps={{ maxLength: 60 }}
+                        size="small"
+                        sx={{
+                          mb: 1.5,
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            borderRadius: '10px',
+                            fontSize: '0.85rem',
+                            color: '#e6edf3',
+                            '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
+                            '&:hover fieldset': { borderColor: '#4CC9F0' },
+                            '&.Mui-focused fieldset': { borderColor: '#4CC9F0' },
+                          },
+                          '& input::placeholder': { color: '#555', opacity: 1 },
+                        }}
+                      />
+                      {/* Quick-pick suggestions */}
+                      <Typography sx={{ color: '#555', fontSize: '0.65rem', mb: 0.8, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                        Quick pick
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.7 }}>
                         {QUIZ_TOPICS.map(t => (
                           <Chip key={t.id} label={`${t.icon} ${t.label}`} size="small"
-                            onClick={() => setQuizSettings(s => ({ ...s, topic: t.id }))}
+                            onClick={() => setQuizSettings(s => ({ ...s, topic: t.label }))}
                             sx={{
-                              cursor: 'pointer', fontWeight: 700, fontSize: '0.68rem',
-                              bgcolor: quizSettings.topic === t.id ? `${t.color}28` : 'rgba(255,255,255,0.05)',
-                              border: `1px solid ${quizSettings.topic === t.id ? t.color : 'rgba(255,255,255,0.1)'}`,
-                              color: quizSettings.topic === t.id ? t.color : '#8b949e',
-                              '&:hover': { bgcolor: `${t.color}18`, borderColor: t.color },
+                              cursor: 'pointer', fontWeight: 700, fontSize: '0.67rem',
+                              bgcolor: quizSettings.topic === t.label ? `${t.color}28` : 'rgba(255,255,255,0.04)',
+                              border: `1px solid ${quizSettings.topic === t.label ? t.color : 'rgba(255,255,255,0.08)'}`,
+                              color: quizSettings.topic === t.label ? t.color : '#666',
+                              '&:hover': { bgcolor: `${t.color}18`, borderColor: t.color, color: t.color },
                             }} />
                         ))}
                       </Box>

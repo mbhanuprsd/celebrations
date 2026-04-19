@@ -1,17 +1,32 @@
 // src/games/quiz/quizGeminiService.js
-// Uses the Gemini 1.5 Flash API (free tier) to generate quiz questions.
-// Get a free key at: https://aistudio.google.com/app/apikey
+// Tries the Gemini API first; falls back to the built-in question bank on any error.
+// Free key: https://aistudio.google.com/app/apikey (no billing required)
 
-const GEMINI_MODEL = 'gemini-1.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+import { getFallbackQuestions } from './quizFallbackBank';
 
-/**
- * Generate `count` quiz questions for the given topic.
- * Returns an array of: { question, options: [str,str,str,str], correctIndex: 0-3 }
- */
+const GEMINI_MODEL = 'gemini-2.0-flash';
+// Use stable v1 endpoint (not v1beta) to avoid model deprecation issues
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
+
 export async function generateQuizQuestions(topic, count = 8, apiKey) {
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+  // Try Gemini if a key is configured
+  if (apiKey) {
+    try {
+      const questions = await fetchFromGemini(topic, count, apiKey);
+      if (questions.length >= count) return questions;
+      // If Gemini returned fewer than requested, top up from fallback
+      const extra = getFallbackQuestions(topic, count - questions.length);
+      return [...questions, ...extra].slice(0, count);
+    } catch (err) {
+      console.warn('Gemini unavailable, using built-in question bank:', err.message);
+    }
+  }
 
+  // Fallback: built-in question bank (always works, no API needed)
+  return getFallbackQuestions(topic, count);
+}
+
+async function fetchFromGemini(topic, count, apiKey) {
   const prompt = `Generate ${count} multiple-choice trivia questions about "${topic}".
 
 Rules:
@@ -30,46 +45,37 @@ Format (strict JSON array):
   }
 ]
 
-correctIndex is 0-based index of the correct option in the options array.`;
+correctIndex is the 0-based index of the correct option.`;
 
   const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-      },
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
     }),
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${err}`);
+    const body = await res.text();
+    throw new Error(`Gemini API error ${res.status}: ${body}`);
   }
 
   const data = await res.json();
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-  // Strip markdown fences if present
+  const raw  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
 
-  let questions;
-  try {
-    questions = JSON.parse(cleaned);
-  } catch {
-    throw new Error('Failed to parse Gemini response as JSON');
-  }
+  let parsed;
+  try { parsed = JSON.parse(cleaned); }
+  catch { throw new Error('Failed to parse Gemini response as JSON'); }
 
-  // Validate and sanitise
-  return questions
+  return parsed
     .filter(q => q.question && Array.isArray(q.options) && q.options.length === 4
                  && typeof q.correctIndex === 'number')
     .slice(0, count)
     .map(q => ({
-      question: q.question,
-      options: q.options.map(String),
+      question:     q.question,
+      options:      q.options.map(String),
       correctIndex: Math.min(3, Math.max(0, q.correctIndex)),
     }));
 }

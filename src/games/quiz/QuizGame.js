@@ -4,7 +4,6 @@ import {
   Box, Typography, Button, Avatar, Chip, LinearProgress, CircularProgress,
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
-import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import ReplayIcon from '@mui/icons-material/Replay';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -44,7 +43,7 @@ function WinnerOverlay({ q, room, isHost, onReset, onLeave, resetting }) {
             Quiz Over!
           </Typography>
           <Typography sx={{ color: '#8b949e', fontSize: '0.78rem', mb: 2 }}>
-            {TOPIC_MAP[q.topic]?.icon} {TOPIC_MAP[q.topic]?.label}
+            🧠 {q.topic}
           </Typography>
           <Box mb={3}>
             {sorted.map((uid, i) => (
@@ -210,6 +209,9 @@ export function QuizGame() {
     const start = q.questionStartTime;
     const total = QUIZ_SETTINGS.answerTime;
 
+    // Immediately reset to prevent stale time from previous question flashing
+    setTimeLeft(total);
+
     const tick = () => {
       const elapsed = (Date.now() - start) / 1000;
       const remaining = Math.max(0, total - elapsed);
@@ -222,21 +224,30 @@ export function QuizGame() {
   }, [q?.currentIndex, q?.phase, q?.questionStartTime]);
 
   // ── Host auto-advance logic ───────────────────────────────────────────
-  // Triggers reveal when everyone answered OR time runs out
+  // Use a ref for q so checkAdvance always reads the latest without being
+  // recreated on every answer (which was resetting revealRef mid-question).
+  const qRef = useRef(q);
+  useEffect(() => { qRef.current = q; }, [q]);
+
   const checkAdvance = useCallback(async () => {
-    if (!isHost || !q || q.phase !== 'question') return;
-    const allAnswered = (q.playerOrder || []).every(uid => q.answers?.[uid]);
-    const timedOut = (Date.now() - q.questionStartTime) / 1000 >= QUIZ_SETTINGS.answerTime;
+    const cur = qRef.current;
+    if (!isHost || !cur || cur.phase !== 'question') return;
+    const allAnswered = (cur.playerOrder || []).every(uid => cur.answers?.[uid]);
+    const timedOut = (Date.now() - cur.questionStartTime) / 1000 >= QUIZ_SETTINGS.answerTime;
     if ((allAnswered || timedOut) && !revealRef.current) {
       revealRef.current = true;
       await revealQuizAnswer(roomId);
     }
-  }, [isHost, q, roomId]);
+  }, [isHost, roomId]);  // stable — no longer depends on q directly
 
-  // Poll for time-out (host only)
+  // Reset revealRef only when the question index changes (not on every answer)
+  useEffect(() => {
+    revealRef.current = false;
+  }, [q?.currentIndex]);
+
+  // Poll for all-answered / time-out (host only)
   useEffect(() => {
     if (!isHost || !q || q.phase !== 'question') return;
-    revealRef.current = false;
     const id = setInterval(checkAdvance, 500);
     return () => clearInterval(id);
   }, [q?.currentIndex, q?.phase, isHost, checkAdvance]);
@@ -251,10 +262,10 @@ export function QuizGame() {
   }, [q?.currentIndex, q?.phase, isHost, roomId]);
 
   // ── Answer handler ────────────────────────────────────────────────────
-  const handleAnswer = async (idx) => {
+  const handleAnswer = useCallback(async (idx) => {
     if (!q || q.phase !== 'question' || q.answers?.[userId]) return;
     await submitQuizAnswer(roomId, userId, idx).catch(console.error);
-  };
+  }, [q, roomId, userId]);
 
   // ── Play Again ────────────────────────────────────────────────────────
   const handleReset = async () => {
@@ -277,7 +288,12 @@ export function QuizGame() {
 
   const currentQ   = q.questions?.[q.currentIndex];
   const myAnswer   = q.answers?.[userId];
-  const topic      = TOPIC_MAP[q.topic] || TOPIC_MAP.general;
+  // topic is now a plain label string (e.g. "Indian History"), find matching preset for icon/color
+  const topicPreset = Object.values(TOPIC_MAP).find(
+    t => t.label.toLowerCase() === (q.topic || '').toLowerCase()
+  );
+  const topicIcon  = topicPreset?.icon  || '🧠';
+  const topicColor = topicPreset?.color || '#4CC9F0';
   const timePct    = (timeLeft / QUIZ_SETTINGS.answerTime) * 100;
   const answered   = Object.keys(q.answers || {}).length;
   const total      = q.playerOrder.length;
@@ -293,9 +309,9 @@ export function QuizGame() {
         px: 2, py: 1, bgcolor: 'rgba(0,0,0,0.6)',
         borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0, gap: 1 }}>
         <Box display="flex" alignItems="center" gap={1}>
-          <Typography sx={{ fontSize: '1.2rem' }}>{topic.icon}</Typography>
+          <Typography sx={{ fontSize: '1.2rem' }}>{topicIcon}</Typography>
           <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: '0.9rem' }}>
-            {topic.label}
+            {q.topic}
           </Typography>
         </Box>
         {q.phase !== 'finished' && (
@@ -382,25 +398,20 @@ export function QuizGame() {
                 </Box>
               )}
 
-              {/* Reveal score for this question */}
+              {/* Reveal: score feedback for this question */}
               {q.phase === 'reveal' && myAnswer && (
                 <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
                   <Box sx={{ textAlign: 'center', mt: 1.5, p: 1.5, borderRadius: '12px',
-                    bgcolor: myAnswer.correct
-                      ? 'rgba(6,214,160,0.1)' : 'rgba(239,68,68,0.08)',
+                    bgcolor: myAnswer.correct ? 'rgba(6,214,160,0.1)' : 'rgba(239,68,68,0.08)',
                     border: `1px solid ${myAnswer.correct ? 'rgba(6,214,160,0.3)' : 'rgba(239,68,68,0.2)'}` }}>
                     <Typography sx={{ fontWeight: 900, fontSize: '1rem',
                       color: myAnswer.correct ? '#06D6A0' : '#ef4444' }}>
                       {myAnswer.correct ? `+${myAnswer.score} pts` : 'Wrong answer'}
                     </Typography>
-                    {!myAnswer && (
-                      <Typography sx={{ color: '#8b949e', fontSize: '0.75rem', mt: 0.3 }}>
-                        Time ran out!
-                      </Typography>
-                    )}
                   </Box>
                 </motion.div>
               )}
+              {/* Reveal: player ran out of time (no answer recorded) */}
               {q.phase === 'reveal' && !myAnswer && (
                 <Box sx={{ textAlign: 'center', mt: 1.5, p: 1.5, borderRadius: '12px',
                   bgcolor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>

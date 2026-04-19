@@ -17,9 +17,10 @@ import { LudoGameEngine } from '../games/ludo/LudoGameEngine';
 import { SnakeLadderGameEngine } from '../games/snakeladder/SnakeLadderGameEngine';
 import { UnoGameEngine } from '../games/uno/UnoGameEngine';
 import { MiniGolfGameEngine } from '../games/minigolf/MiniGolfGameEngine';
+import { QuizGameEngine } from '../games/quiz/QuizGameEngine';
 import { GAME_META } from '../core/GameEngine';
 
-const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine, minigolf: MiniGolfGameEngine };
+const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine, minigolf: MiniGolfGameEngine, quiz: QuizGameEngine };
 
 const GAME_GRADIENTS = {
   drawing: 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',
@@ -61,6 +62,10 @@ export function Lobby() {
       await new EngineClass(state.roomId, userId, room).onStartGame(playerOrder);
     } catch (e) { console.error(e); setStarting(false); }
   };
+
+  const startLabel = starting
+    ? (gameType === 'quiz' ? 'Generating questions…' : 'Starting…')
+    : 'Start Game';
 
   // Settings chips
   const chips = gameType === 'drawing' ? [
@@ -265,7 +270,7 @@ export function Lobby() {
                 '&:hover': { filter: 'brightness(1.1)' },
                 transition: 'all 0.2s',
               }}>
-              {starting ? 'Starting…' : `Start Game (${players.length} players)`}
+              {starting ? startLabel : `Start Game (${players.length} players)`}
             </Button>
           ) : (
             <Button fullWidth variant="outlined" disabled
