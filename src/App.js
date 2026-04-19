@@ -12,6 +12,7 @@ import { LudoGame } from './games/ludo/LudoGame';
 import { SnakeLadderGame } from './games/snakeladder/SnakeLadderGame';
 import { UnoGame } from './games/uno/UnoGame';
 import { MiniGolfGame } from './games/minigolf/MiniGolfGame';
+import { QuizGame } from './games/quiz/QuizGame';
 import { Box, CircularProgress, Typography, Tooltip, IconButton } from '@mui/material';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import { useRoom } from './hooks/useRoom';
@@ -22,6 +23,7 @@ const GAME_COMPONENTS = {
   snakeladder: SnakeLadderGame,
   uno: UnoGame,
   minigolf: MiniGolfGame,
+  quiz: QuizGame,
 };
 
 /** Small floating exit button — always visible while inside a game or lobby.
@@ -93,6 +95,7 @@ function AppContent() {
       case 'snakeladder': return !!room.slState;
       case 'uno': return !!room.unoState;
       case 'minigolf': return !!room.miniGolfState;
+      case 'quiz': return !!room.quizState;
       default: return true;
     }
   };

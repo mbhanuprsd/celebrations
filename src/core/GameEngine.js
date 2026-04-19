@@ -21,6 +21,7 @@ const LudoGameEngine = () => import('../games/ludo/LudoGameEngine');
 const SnakeLadderGameEngine = () => import('../games/snakeladder/SnakeLadderGameEngine');
 const UnoGameEngine = () => import('../games/uno/UnoGameEngine');
 const MiniGolfGameEngine = () => import('../games/minigolf/MiniGolfGameEngine');
+const QuizGameEngine = () => import('../games/quiz/QuizGameEngine');
 
 export const GameRegistry = {
   drawing: DrawingGameEngine,
@@ -28,6 +29,7 @@ export const GameRegistry = {
   snakeladder: SnakeLadderGameEngine,
   uno: UnoGameEngine,
   minigolf: MiniGolfGameEngine,
+  quiz: QuizGameEngine,
 };
 
 export const GAME_META = {
@@ -70,6 +72,14 @@ export const GAME_META = {
     howToPlay: 'Aim your ball and adjust the power to sink it into the hole. The player who completes the course in the fewest total strokes wins!',
     minPlayers: 2, maxPlayers: 10,
     defaultSettings: { maxPlayers: 10 },
+  },
+  quiz: {
+    label: 'Quiz',
+    icon: '🧠',
+    description: 'AI-generated trivia — fastest correct answer scores most!',
+    howToPlay: 'Choose a topic and the AI generates unique questions. Everyone sees the same question and 4 options. Answer correctly and fast to score points — up to 1000 per question. Most points after all questions wins!',
+    minPlayers: 2, maxPlayers: 12,
+    defaultSettings: { maxPlayers: 12, questionCount: 8, answerTime: 20, topic: 'general' },
   },
 };
 

@@ -5,7 +5,7 @@ import {
   sendSystemMessage, recordCorrectGuess, updateDrawerScore,
   clearCanvas, clearChat
 , safeUpdateDoc } from '../../firebase/services';
-import { updateDoc, doc } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 
 export class DrawingGameEngine extends GameEngine {

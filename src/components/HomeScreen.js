@@ -25,6 +25,7 @@ import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
 import { useGameContext } from '../context/GameContext';
 import { GAME_META } from '../core/GameEngine';
+import { QUIZ_TOPICS } from '../games/quiz/quizConstants';
 import {
   listenActiveGames, getUserGameHistory,
   sendGlobalMessage, listenGlobalChat,
@@ -516,6 +517,7 @@ function GamesPanel({ playerName, onLocalError, localError }) {
   const [ludoSettings, setLudoSettings] = useState({ maxPlayers: 4 });
   const [slSettings, setSlSettings] = useState({ maxPlayers: 4 });
   const [unoSettings, setUnoSettings] = useState({ maxPlayers: 6 });
+  const [quizSettings, setQuizSettings] = useState({ maxPlayers: 12, questionCount: 8, topic: 'general' });
   const [resumeSession, setResumeSession] = useState(getStoredSession);
   const meta = GAME_META[gameType];
 
@@ -524,7 +526,8 @@ function GamesPanel({ playerName, onLocalError, localError }) {
     const gs = gameType === 'ludo' ? ludoSettings
       : gameType === 'snakeladder' ? slSettings
         : gameType === 'uno' ? unoSettings
-          : settings;
+          : gameType === 'quiz' ? quizSettings
+            : settings;
     await create(playerName, gs, gameType);
   };
 
@@ -593,6 +596,32 @@ function GamesPanel({ playerName, onLocalError, localError }) {
                 {gameType === 'ludo' && <SettingSlider label="Players" icon="🎲" value={ludoSettings.maxPlayers} color="#FFD166" min={2} max={4} marks={[{ value: 2, label: '2' }, { value: 3, label: '3' }, { value: 4, label: '4' }]} onChange={v => setLudoSettings(s => ({ ...s, maxPlayers: v }))} />}
                 {gameType === 'snakeladder' && <SettingSlider label="Players" icon="🐍" value={slSettings.maxPlayers} color="#06D6A0" min={2} max={12} marks={[{ value: 2, label: '2' }, { value: 6, label: '6' }, { value: 12, label: '12' }]} onChange={v => setSlSettings(s => ({ ...s, maxPlayers: v }))} />}
                 {gameType === 'uno' && <SettingSlider label="Players" icon="🃏" value={unoSettings.maxPlayers} color="#a855f7" min={2} max={10} marks={[{ value: 2, label: '2' }, { value: 6, label: '6' }, { value: 10, label: '10' }]} onChange={v => setUnoSettings(s => ({ ...s, maxPlayers: v }))} />}
+                {gameType === 'quiz' && (
+                  <Box>
+                    <SettingSlider label="Questions" icon="❓" value={quizSettings.questionCount}
+                      color="#4CC9F0" min={5} max={15} step={1}
+                      marks={[{ value: 5, label: '5' }, { value: 8, label: '8' }, { value: 15, label: '15' }]}
+                      onChange={v => setQuizSettings(s => ({ ...s, questionCount: v }))} />
+                    <Box sx={{ mt: 1.5 }}>
+                      <Typography sx={{ color: '#8b949e', fontSize: '0.73rem', mb: 1, fontWeight: 700 }}>
+                        🎯 Topic
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.7 }}>
+                        {QUIZ_TOPICS.map(t => (
+                          <Chip key={t.id} label={`${t.icon} ${t.label}`} size="small"
+                            onClick={() => setQuizSettings(s => ({ ...s, topic: t.id }))}
+                            sx={{
+                              cursor: 'pointer', fontWeight: 700, fontSize: '0.68rem',
+                              bgcolor: quizSettings.topic === t.id ? `${t.color}28` : 'rgba(255,255,255,0.05)',
+                              border: `1px solid ${quizSettings.topic === t.id ? t.color : 'rgba(255,255,255,0.1)'}`,
+                              color: quizSettings.topic === t.id ? t.color : '#8b949e',
+                              '&:hover': { bgcolor: `${t.color}18`, borderColor: t.color },
+                            }} />
+                        ))}
+                      </Box>
+                    </Box>
+                  </Box>
+                )}
                 <Collapse in={!!localError}>
                   <Alert severity="error" sx={{ mb: 1.5, borderRadius: '12px', bgcolor: 'rgba(239,35,60,0.09)', color: '#EF233C', border: '1px solid rgba(239,35,60,0.22)' }}>{localError}</Alert>
                 </Collapse>
