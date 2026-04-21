@@ -1,5 +1,5 @@
 // src/components/Lobby.js — Mobile-first dark redesign
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, Chip, Avatar,
   List, ListItem, ListItemAvatar, ListItemText,
@@ -10,6 +10,9 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import StarIcon from '@mui/icons-material/Star';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useGameContext } from '../context/GameContext';
 import { useRoom } from '../hooks/useRoom';
 import { DrawingGameEngine } from '../games/drawing/DrawingGameEngine';
@@ -19,6 +22,10 @@ import { UnoGameEngine } from '../games/uno/UnoGameEngine';
 import { MiniGolfGameEngine } from '../games/minigolf/MiniGolfGameEngine';
 import { QuizGameEngine } from '../games/quiz/QuizGameEngine';
 import { GAME_META } from '../core/GameEngine';
+import { generateQuizQuestions } from '../games/quiz/quizGeminiService';
+import { safeUpdateDoc } from '../firebase/services';
+import { doc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine, minigolf: MiniGolfGameEngine, quiz: QuizGameEngine };
 
@@ -26,8 +33,64 @@ const GAME_GRADIENTS = {
   drawing: 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',
   ludo: 'linear-gradient(135deg, #FFD166 0%, #EF476F 100%)',
   snakeladder: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)',
+  quiz: 'linear-gradient(135deg, #4CC9F0 0%, #06D6A0 100%)',
 };
-const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0' };
+const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0', quiz: '#4CC9F0' };
+
+// ── Quiz pre-generation status card ───────────────────────────────────────
+function QuizPregenerationCard({ status, count, topic, onRetry, isHost }) {
+  const statusConfig = {
+    idle:       { icon: <AutoAwesomeIcon sx={{ fontSize: 16 }} />,    color: '#8b949e', text: 'Preparing questions…' },
+    generating: { icon: <CircularProgress size={14} sx={{ color: '#4CC9F0' }} />, color: '#4CC9F0', text: 'Generating questions with AI…' },
+    done:       { icon: <CheckCircleIcon sx={{ fontSize: 16 }} />,     color: '#06D6A0', text: `${count} questions ready!` },
+    fallback:   { icon: <CheckCircleIcon sx={{ fontSize: 16 }} />,     color: '#FFB703', text: `${count} questions ready (built-in bank)` },
+    error:      { icon: <ErrorOutlineIcon sx={{ fontSize: 16 }} />,    color: '#ef4444', text: 'Failed to generate questions' },
+  };
+  const cfg = statusConfig[status] || statusConfig.idle;
+
+  return (
+    <Card sx={{
+      mb: 2, bgcolor: 'rgba(14,21,32,0.95)',
+      border: `1px solid ${cfg.color}35`,
+      borderRadius: '20px',
+      boxShadow: `0 4px 24px ${cfg.color}12`,
+    }}>
+      <CardContent sx={{ p: { xs: '14px 16px', sm: '16px 20px' } }}>
+        {/* Topic row */}
+        <Box display="flex" alignItems="center" gap={1} mb={1.5}>
+          <Typography sx={{ fontSize: '1.3rem' }}>🧠</Typography>
+          <Box>
+            <Typography sx={{ color: '#484f58', fontSize: '0.6rem', fontWeight: 800,
+              letterSpacing: '0.1em', textTransform: 'uppercase', lineHeight: 1 }}>
+              Topic
+            </Typography>
+            <Typography sx={{ color: '#e6edf3', fontWeight: 900, fontSize: '1rem', lineHeight: 1.2 }}>
+              {topic || 'General Knowledge'}
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Generation status */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          py: 0.8, px: 1.2, borderRadius: '10px',
+          bgcolor: `${cfg.color}10`, border: `1px solid ${cfg.color}25` }}>
+          <Box display="flex" alignItems="center" gap={1} sx={{ color: cfg.color }}>
+            {cfg.icon}
+            <Typography sx={{ color: cfg.color, fontSize: '0.75rem', fontWeight: 700 }}>
+              {cfg.text}
+            </Typography>
+          </Box>
+          {status === 'error' && isHost && (
+            <Button size="small" onClick={onRetry}
+              sx={{ fontSize: '0.65rem', color: '#4CC9F0', py: 0.2, minWidth: 0 }}>
+              Retry
+            </Button>
+          )}
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function Lobby() {
   const { state, notify } = useGameContext();
@@ -36,15 +99,74 @@ export function Lobby() {
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // ── Quiz pre-generation ──────────────────────────────────────────────
+  const [genStatus, setGenStatus] = useState('idle');  // idle | generating | done | fallback | error
+  const [genCount, setGenCount]   = useState(0);
+  const genDoneRef = useRef(false);  // prevent double-firing
+
+  useEffect(() => {
+    if (!room || room.gameType !== 'quiz' || !isHost) return;
+
+    // Already have questions stored in the room
+    if (room.quizQuestions?.length) {
+      setGenStatus(room.quizQuestions._source === 'fallback' ? 'fallback' : 'done');
+      setGenCount(room.quizQuestions.length);
+      genDoneRef.current = true;
+      return;
+    }
+
+    if (genDoneRef.current) return;
+    genDoneRef.current = true;
+
+    const generate = async () => {
+      setGenStatus('generating');
+      try {
+        const topic  = room.settings?.topic || 'General Knowledge';
+        const count  = room.settings?.questionCount || 8;
+        const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+
+        const questions = await generateQuizQuestions(topic, count, apiKey);
+
+        // Detect whether Gemini or fallback was used (Gemini questions won't have _source)
+        const isFallback = !apiKey || questions._source === 'fallback';
+
+        // Store questions in room so all players + Start Game can access them instantly
+        await safeUpdateDoc(doc(db, 'rooms', state.roomId), {
+          quizQuestions: questions,
+        });
+
+        setGenStatus(isFallback ? 'fallback' : 'done');
+        setGenCount(questions.length);
+      } catch (e) {
+        console.error('Quiz pre-generation failed:', e);
+        setGenStatus('error');
+        genDoneRef.current = false;  // allow retry
+      }
+    };
+
+    generate();
+  }, [room?.gameType, isHost, state.roomId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Non-host: sync status from room state
+  useEffect(() => {
+    if (!room || room.gameType !== 'quiz' || isHost) return;
+    if (room.quizQuestions?.length) {
+      setGenStatus('done');
+      setGenCount(room.quizQuestions.length);
+    }
+  }, [room?.quizQuestions?.length, isHost, room?.gameType]);
+
   if (!room) return null;
 
-  const players = Object.values(room.players || {});
-  const gameType = room.gameType || 'drawing';
-  const meta = GAME_META[gameType] || GAME_META.drawing;
+  const players   = Object.values(room.players || {});
+  const gameType  = room.gameType || 'drawing';
+  const meta      = GAME_META[gameType] || GAME_META.drawing;
   const minPlayers = meta.minPlayers || 2;
-  const canStart = isHost && players.length >= minPlayers;
-  const glow = GAME_GLOW[gameType] || '#4CC9F0';
-  const grad = GAME_GRADIENTS[gameType] || GAME_GRADIENTS.drawing;
+  const isQuiz    = gameType === 'quiz';
+  const quizReady = !isQuiz || genStatus === 'done' || genStatus === 'fallback';
+  const canStart  = isHost && players.length >= minPlayers && quizReady;
+  const glow      = GAME_GLOW[gameType] || '#4CC9F0';
+  const grad      = GAME_GRADIENTS[gameType] || GAME_GRADIENTS.drawing;
 
   const copyCode = () => {
     navigator.clipboard.writeText(room.id);
@@ -60,21 +182,32 @@ export function Lobby() {
       const playerOrder = [...players.map(p => p.id)].sort(() => Math.random() - 0.5);
       const EngineClass = GAME_ENGINES[gameType] || DrawingGameEngine;
       await new EngineClass(state.roomId, userId, room).onStartGame(playerOrder);
-    } catch (e) { console.error(e); setStarting(false); }
+    } catch (e) {
+      console.error(e);
+      notify('Failed to start game. Please try again.', 'error');
+      setStarting(false);
+    }
   };
 
-  const startLabel = starting
-    ? (gameType === 'quiz' ? 'Generating questions…' : 'Starting…')
-    : 'Start Game';
+  const handleRetryGen = () => {
+    genDoneRef.current = false;
+    setGenStatus('idle');
+  };
 
   // Settings chips
   const chips = gameType === 'drawing' ? [
     { label: `${players.length}/${room.settings?.maxPlayers} players`, color: '#4CC9F0' },
     { label: `${room.settings?.rounds} rounds`, color: '#F72585' },
     { label: `${room.settings?.drawTime}s draw`, color: '#06D6A0' },
+  ] : isQuiz ? [
+    { label: `${room.settings?.questionCount || 8} questions`, color: '#4CC9F0' },
+    { label: `${room.settings?.answerTime || 20}s per question`, color: '#06D6A0' },
+    { label: `Up to ${room.settings?.maxPlayers} players`, color: '#FFB703' },
   ] : [
     { label: `Up to ${room.settings?.maxPlayers} players`, color: glow },
   ];
+
+  const startLabel = starting ? 'Starting…' : `Start Game (${players.length} players)`;
 
   return (
     <Box sx={{
@@ -111,6 +244,17 @@ export function Lobby() {
           </Typography>
         </Box>
 
+        {/* ── Quiz: topic + generation status card ── */}
+        {isQuiz && (
+          <QuizPregenerationCard
+            status={genStatus}
+            count={genCount}
+            topic={room.settings?.topic}
+            onRetry={handleRetryGen}
+            isHost={isHost}
+          />
+        )}
+
         {/* Room code card */}
         <Card sx={{
           mb: 2, bgcolor: 'rgba(14,21,32,0.95)', border: `1px solid ${glow}25`,
@@ -123,7 +267,6 @@ export function Lobby() {
             }}>
               Room Code — Share with friends
             </Typography>
-            {/* Code display */}
             <Box onClick={copyCode} sx={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               bgcolor: `${glow}0e`, border: `1.5px dashed ${glow}40`,
@@ -243,6 +386,19 @@ export function Lobby() {
                 </Typography>
               </Box>
             )}
+            {/* Quiz: waiting for questions to generate */}
+            {isQuiz && (genStatus === 'idle' || genStatus === 'generating') && (
+              <Box sx={{
+                mt: 1, py: 0.8, px: 1.2, borderRadius: '10px',
+                bgcolor: 'rgba(76,201,240,0.05)', border: '1px solid rgba(76,201,240,0.15)',
+                textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1
+              }}>
+                <CircularProgress size={12} sx={{ color: '#4CC9F0' }} />
+                <Typography sx={{ color: '#4CC9F0', fontSize: '0.73rem', fontWeight: 700 }}>
+                  {isHost ? 'Generating questions…' : 'Host is preparing questions…'}
+                </Typography>
+              </Box>
+            )}
           </CardContent>
         </Card>
 
@@ -270,7 +426,7 @@ export function Lobby() {
                 '&:hover': { filter: 'brightness(1.1)' },
                 transition: 'all 0.2s',
               }}>
-              {starting ? startLabel : `Start Game (${players.length} players)`}
+              {starting ? 'Starting…' : startLabel}
             </Button>
           ) : (
             <Button fullWidth variant="outlined" disabled

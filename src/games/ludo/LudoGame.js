@@ -278,7 +278,7 @@ export function LudoGame() {
         isMe: uid === userId,
       })),
     });
-  }, [ls?.winner, userId]);  // roomRef is stable — no need to list it
+  }, [ls?.winner, ls?.rankings, ls?.winnerUid, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRoll = useCallback(async () => {
     if (actionPending) return;

@@ -115,9 +115,8 @@ export const joinRoom = async (roomId, playerName) => {
   const isExistingPlayer = !!room.players?.[userId];
   if (isExistingPlayer) {
     await setPlayerOnlineStatus(roomId, userId, true);
-    // Return full room data so the caller can route correctly
-    const freshSnap = await getDoc(roomRef);
-    return freshSnap.exists() ? freshSnap.data() : room;
+    // FIX: return the already-fetched snapshot data — no second getDoc needed
+    return room;
   }
 
   const playerCount = Object.keys(room.players || {}).length;
@@ -455,24 +454,29 @@ export const listenOpenRooms = (callback) => {
     limit(30)
   );
 
+  // FIX: in-flight guard — if the Firestore snapshot fires again before the previous
+  // batch of RTDB onValue calls has resolved, skip the new snapshot instead of
+  // spawning a second batch of N listeners for the same rooms.
+  let inFlight = false;
+
   const unsubFirestore = onSnapshot(q, async (snap) => {
-    const rooms = snap.docs.map(d => d.data());
-    // For each room, check RTDB presence of host
-    const checks = await Promise.all(rooms.map(room => {
-      return new Promise(resolve => {
-        if (!room.hostId || !room.id) { resolve(null); return; }
-        const presRef = ref(rtdb, `presence/${room.id}/${room.hostId}`);
-        onValue(presRef, (pSnap) => {
-          const presence = pSnap.val();
-          if (presence?.online === true) {
-            resolve(room);
-          } else {
-            resolve(null);
-          }
-        }, { onlyOnce: true });
-      });
-    }));
-    callback(checks.filter(Boolean));
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      const rooms = snap.docs.map(d => d.data());
+      const checks = await Promise.all(rooms.map(room => {
+        return new Promise(resolve => {
+          if (!room.hostId || !room.id) { resolve(null); return; }
+          const presRef = ref(rtdb, `presence/${room.id}/${room.hostId}`);
+          onValue(presRef, (pSnap) => {
+            resolve(pSnap.val()?.online === true ? room : null);
+          }, { onlyOnce: true });
+        });
+      }));
+      callback(checks.filter(Boolean));
+    } finally {
+      inFlight = false;
+    }
   });
 
   return unsubFirestore;
@@ -593,37 +597,39 @@ export const listenActiveGames = (callback) => {
     limit(10)
   );
 
+  // FIX: in-flight guard prevents a new RTDB listener batch from spawning
+  // before the previous one resolves (same pattern as listenOpenRooms).
+  let inFlight = false;
+
   return onSnapshot(q, async (snap) => {
-    const rooms = snap.docs.map(d => d.data());
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      const rooms = snap.docs.map(d => d.data());
 
-    const results = await Promise.all(rooms.map(room =>
-      new Promise(resolve => {
-        const playerIds = Object.keys(room.players || {});
+      const results = await Promise.all(rooms.map(room =>
+        new Promise(resolve => {
+          const playerIds = Object.keys(room.players || {});
 
-        // No players left at all — delete and hide immediately
-        if (playerIds.length === 0) {
-          deleteDoc(doc(db, 'rooms', room.id)).catch(() => { });
-          resolve(null);
-          return;
-        }
+          // No players — hide from UI.
+          // FIX: do NOT deleteDoc inside a snapshot callback — it triggers another
+          // snapshot, can cascade, and permanently deletes rooms whose players are
+          // mid-reconnect. Room cleanup should be handled by Cloud Functions / TTL rules.
+          if (playerIds.length === 0) { resolve(null); return; }
 
-        // Check RTDB presence for every player in this room
-        const presenceRef = ref(rtdb, `presence/${room.id}`);
-        onValue(presenceRef, (pSnap) => {
-          const presence = pSnap.val() || {};
-          const anyOnline = playerIds.some(uid => presence[uid]?.online === true);
+          const presenceRef = ref(rtdb, `presence/${room.id}`);
+          onValue(presenceRef, (pSnap) => {
+            const presence  = pSnap.val() || {};
+            const anyOnline = playerIds.some(uid => presence[uid]?.online === true);
+            // FIX: just filter from the UI — don't delete
+            resolve(anyOnline ? room : null);
+          }, { onlyOnce: true });
+        })
+      ));
 
-          if (!anyOnline) {
-            // All players offline / left — delete the room and hide it
-            deleteDoc(doc(db, 'rooms', room.id)).catch(() => { });
-            resolve(null);
-          } else {
-            resolve(room);
-          }
-        }, { onlyOnce: true });
-      })
-    ));
-
-    callback(results.filter(Boolean));
+      callback(results.filter(Boolean));
+    } finally {
+      inFlight = false;
+    }
   });
 };

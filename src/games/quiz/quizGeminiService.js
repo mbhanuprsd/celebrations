@@ -4,26 +4,34 @@
 
 import { getFallbackQuestions } from './quizFallbackBank';
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
-// Use stable v1 endpoint (not v1beta) to avoid model deprecation issues
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_MODEL = 'gemini-2.5-flash';
+// AI Studio keys use v1beta — do NOT change to v1 (that's for Vertex AI keys)
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 export async function generateQuizQuestions(topic, count = 8, apiKey) {
-  // Try Gemini if a key is configured
-  if (apiKey) {
-    try {
-      const questions = await fetchFromGemini(topic, count, apiKey);
-      if (questions.length >= count) return questions;
-      // If Gemini returned fewer than requested, top up from fallback
-      const extra = getFallbackQuestions(topic, count - questions.length);
-      return [...questions, ...extra].slice(0, count);
-    } catch (err) {
-      console.warn('Gemini unavailable, using built-in question bank:', err.message);
-    }
+  if (!apiKey) {
+    console.info('ℹ️ No REACT_APP_GEMINI_API_KEY — using built-in question bank.');
+    return getFallbackQuestions(topic, count);
   }
 
-  // Fallback: built-in question bank (always works, no API needed)
-  return getFallbackQuestions(topic, count);
+  console.info(`🧠 Calling Gemini for topic: "${topic}" (${count} questions)…`);
+  try {
+    const questions = await fetchFromGemini(topic, count, apiKey);
+    console.info(`✅ Gemini returned ${questions.length} questions.`);
+    if (questions.length >= count) return questions;
+    // Top up from fallback if Gemini returned fewer than requested
+    const extra = getFallbackQuestions(topic, count - questions.length);
+    return [...questions, ...extra].slice(0, count);
+  } catch (err) {
+    if (err.message?.includes('429') || err.message?.includes('spending cap')) {
+      console.warn('⚠️ Gemini quota hit (429). Using built-in bank.\nFix: get a key from aistudio.google.com/app/apikey — no billing needed.');
+    } else if (err.message?.includes('400') || err.message?.includes('API_KEY_INVALID')) {
+      console.warn('⚠️ Gemini API key is invalid. Check REACT_APP_GEMINI_API_KEY in your .env file.');
+    } else {
+      console.warn('⚠️ Gemini error — using built-in bank:', err.message);
+    }
+    return getFallbackQuestions(topic, count);
+  }
 }
 
 async function fetchFromGemini(topic, count, apiKey) {
@@ -64,7 +72,7 @@ correctIndex is the 0-based index of the correct option.`;
   const data = await res.json();
   const raw  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-
+  console.debug('Gemini raw response:', raw);
   let parsed;
   try { parsed = JSON.parse(cleaned); }
   catch { throw new Error('Failed to parse Gemini response as JSON'); }

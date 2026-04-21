@@ -13,9 +13,7 @@ import { SnakeLadderGame } from './games/snakeladder/SnakeLadderGame';
 import { UnoGame } from './games/uno/UnoGame';
 import { MiniGolfGame } from './games/minigolf/MiniGolfGame';
 import { QuizGame } from './games/quiz/QuizGame';
-import { Box, CircularProgress, Typography, Tooltip, IconButton } from '@mui/material';
-import ExitToAppIcon from '@mui/icons-material/ExitToApp';
-import { useRoom } from './hooks/useRoom';
+import { Box, CircularProgress, Typography } from '@mui/material';
 
 const GAME_COMPONENTS = {
   drawing: DrawingGame,
@@ -26,39 +24,6 @@ const GAME_COMPONENTS = {
   quiz: QuizGame,
 };
 
-/** Small floating exit button — always visible while inside a game or lobby.
- *  Acts as an escape hatch if a player gets stuck on any screen. */
-function GlobalExitButton() {
-  const { state, leaveRoom } = useGameContext();
-  const { leave } = useRoom();
-  if (!state.roomId) return null;
-
-  const handleExit = async () => {
-    if (window.confirm('Leave game and return to home?')) {
-      try { await leave(); } catch (_) {}
-      leaveRoom();
-    }
-  };
-
-  return (
-    <Tooltip title="Leave game" placement="left">
-      <IconButton
-        onClick={handleExit}
-        size="small"
-        sx={{
-          position: 'fixed', bottom: 16, right: 16, zIndex: 9999,
-          bgcolor: 'rgba(14,21,32,0.85)', border: '1px solid rgba(239,68,68,0.35)',
-          color: '#ef4444', backdropFilter: 'blur(6px)',
-          width: 38, height: 38,
-          '&:hover': { bgcolor: 'rgba(239,68,68,0.15)', borderColor: '#ef4444' },
-          boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
-        }}
-      >
-        <ExitToAppIcon sx={{ fontSize: 18 }} />
-      </IconButton>
-    </Tooltip>
-  );
-}
 
 function AppContent() {
   const { state } = useGameContext();
@@ -128,7 +93,6 @@ function AppContent() {
       </AnimatePresence>
 
       {/* Global escape hatch — floats over any game screen */}
-      <GlobalExitButton />
     </>
   );
 }
@@ -143,4 +107,3 @@ export default function App() {
     </ThemeProvider>
   );
 }
-

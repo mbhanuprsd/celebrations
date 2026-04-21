@@ -83,10 +83,12 @@ export function ResumeBanner({ onResume, onDismiss }) {
   if (!session) return null;
 
   const gameLabels = {
-    drawing: '🎨 Draw & Guess',
-    ludo: '🎲 Ludo',
+    drawing:     '🎨 Draw & Guess',
+    ludo:        '🎲 Ludo',
     snakeladder: '🐍 Snake & Ladder',
-    uno: '🃏 UNO',
+    uno:         '🃏 UNO',
+    minigolf:    '⛳ Mini Golf',  // FIX: was missing
+    quiz:        '🧠 Quiz',      // FIX: was missing
   };
 
   return (

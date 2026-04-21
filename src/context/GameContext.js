@@ -15,8 +15,8 @@ const STORAGE_KEY = 'celebrations_player_name';
 
 const initialState = {
   userId:      null,
-  userEmail:   null,   // from Google account
-  isAnonymous: false,  // true when signed in as guest
+  userEmail:   null,
+  isAnonymous: false,
   isAuthReady: false,
   playerName:  null,
   isLoggedIn:  false,
@@ -26,9 +26,10 @@ const initialState = {
   isHost:      false,
   isDrawer:    false,
   chat:        [],
+  // FIX: notification is now { msg, type } or null (was bare string)
   notification: null,
-  isLoading:   false,   // game-level loading (create/join)
-  isAuthLoading: false, // auth-only loading (login screen)
+  isLoading:   false,
+  isAuthLoading: false,
   error:       null,
 };
 
@@ -62,43 +63,27 @@ function reducer(state, action) {
   }
 }
 
-/** Extract the full display name from Google account, falling back to email local-part. */
 function extractFullName(user) {
-  if (user.displayName) {
-    return user.displayName.trim();
-  }
-  if (user.email) {
-    return user.email.split('@')[0].replace(/[^A-Za-z0-9]/g, '');
-  }
-  // Fallback for anonymous users: a generic name that resolveUniqueName will make unique
+  if (user.displayName) return user.displayName.trim();
+  if (user.email) return user.email.split('@')[0].replace(/[^A-Za-z0-9]/g, '');
   return 'Guest';
 }
 
-/** Find a unique display name for the user: first name, then FirstName2, FirstName3 … */
 async function resolveUniqueName(uid, baseName) {
-  // Returning user: restore their saved name from localStorage
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
-    // For returning users, we trust the saved name unless it's a generic "Guest"
-    if (!saved.startsWith('Guest')) {
-      return saved;
-    }
-    // If it's a generic "GuestX" name, we verify availability
+    if (!saved.startsWith('Guest')) return saved;
     const available = await checkNameAvailableForUid(saved, uid);
     if (available) return saved;
   }
-
-  // New session: find an available variant of their first name
   let name = baseName;
   let counter = 2;
-  // Allow up to 20 attempts before giving up and appending uid suffix
   while (counter <= 20) {
     const available = await checkNameAvailableForUid(name, uid);
     if (available) return name;
     name = `${baseName}${counter}`;
     counter++;
   }
-  // Fallback: baseName + last 4 chars of uid
   return `${baseName}${uid.slice(-4)}`;
 }
 
@@ -106,16 +91,15 @@ export function GameProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const unsubRoomRef = useRef(null);
   const unsubChatRef = useRef(null);
+  // FIX: store the host-leave timer so it can be cancelled on cleanup
+  const hostLeaveTimerRef = useRef(null);
 
   // ── Auth listener ──────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // If loginAnonymously is mid-flight and will handle SET_LOGGED_IN itself,
-        // skip the generic setup here so we don't race/overwrite the custom name.
         const pendingGuestName = sessionStorage.getItem('pending_guest_name');
         if (user.isAnonymous && pendingGuestName) {
-          // loginAnonymously will complete setup — just mark auth ready
           dispatch({ type: 'SET_AUTH', userId: user.uid, userEmail: user.email, isAnonymous: true });
           return;
         }
@@ -124,16 +108,11 @@ export function GameProvider({ children }) {
         dispatch({ type: 'SET_AUTH', userId: user.uid, userEmail: user.email, isAnonymous: user.isAnonymous });
 
         try {
-          // Priority: 1. Saved name in localStorage, 2. Resolved unique name
           const savedName = localStorage.getItem(STORAGE_KEY);
           let name;
           if (savedName) {
             const available = await checkNameAvailableForUid(savedName, user.uid);
-            if (available) {
-              name = savedName;
-            } else {
-              name = await resolveUniqueName(user.uid, firstName);
-            }
+            name = available ? savedName : await resolveUniqueName(user.uid, firstName);
           } else {
             name = await resolveUniqueName(user.uid, firstName);
           }
@@ -143,7 +122,6 @@ export function GameProvider({ children }) {
           dispatch({ type: 'SET_LOGGED_IN', name });
           dispatch({ type: 'SET_AUTH_LOADING', value: false });
 
-          // ── Auto-rejoin: if a session was saved, silently try to re-enter the room
           const session = getStoredSession();
           if (session?.roomId) {
             try {
@@ -157,7 +135,6 @@ export function GameProvider({ children }) {
         } catch (e) {
           console.error('User setup failed:', e);
           dispatch({ type: 'SET_AUTH_LOADING', value: false });
-          // Auth is ready but setup failed — LoginScreen will show
         }
       } else {
         dispatch({ type: 'SET_AUTH', userId: null, userEmail: null, isAnonymous: false });
@@ -173,24 +150,34 @@ export function GameProvider({ children }) {
     if (unsubRoomRef.current) unsubRoomRef.current();
     if (unsubChatRef.current) unsubChatRef.current();
 
+    // Capture stable refs to avoid stale-closure dispatches
+    const currentUserId = state.userId;
+
     unsubRoomRef.current = listenRoom(state.roomId, (room) => {
-      // Room document was deleted (host left and wiped the room)
       if (!room) {
-        notify('The host ended the game.');
-        leaveRoom();   // immediate — no setTimeout, so no more updateDoc calls fire
+        // FIX: clear any pending host-leave timer before dispatching
+        clearTimeout(hostLeaveTimerRef.current);
+        dispatch({ type: 'SET_NOTIFICATION', notification: { msg: 'The host ended the game.', type: 'info' } });
+        setTimeout(() => dispatch({ type: 'SET_NOTIFICATION', notification: null }), 3000);
+        dispatch({ type: 'LEAVE_ROOM' });
         return;
       }
-      // Host left but room still exists — rare edge case
-      if (room.hostId && room.hostId !== state.userId && !room.players?.[room.hostId]) {
-        notify('The host has left the game. Returning home...');
-        setTimeout(() => leaveRoom(), 2000);
+      if (room.hostId && room.hostId !== currentUserId && !room.players?.[room.hostId]) {
+        dispatch({ type: 'SET_NOTIFICATION', notification: { msg: 'The host has left. Returning home…', type: 'info' } });
+        setTimeout(() => dispatch({ type: 'SET_NOTIFICATION', notification: null }), 3000);
+        // FIX: store timer ref so cleanup can cancel it
+        clearTimeout(hostLeaveTimerRef.current);
+        hostLeaveTimerRef.current = setTimeout(() => dispatch({ type: 'LEAVE_ROOM' }), 2000);
       }
       dispatch({ type: 'SET_ROOM', room });
     });
     unsubChatRef.current = listenChat(state.roomId, (chat) => {
       dispatch({ type: 'SET_CHAT', chat });
     });
+
     return () => {
+      // FIX: cancel the host-leave timer on cleanup to prevent dispatch after unmount
+      clearTimeout(hostLeaveTimerRef.current);
       if (unsubRoomRef.current) unsubRoomRef.current();
       if (unsubChatRef.current) unsubChatRef.current();
     };
@@ -200,12 +187,14 @@ export function GameProvider({ children }) {
   const leaveRoom  = () => dispatch({ type: 'LEAVE_ROOM' });
   const setLoading = (v) => dispatch({ type: 'SET_LOADING', value: v });
   const setError   = (e) => dispatch({ type: 'SET_ERROR', error: e });
-  const notify     = (msg) => {
-    dispatch({ type: 'SET_NOTIFICATION', notification: msg });
+
+  // FIX: notify now accepts an optional type ('info' | 'error' | 'success')
+  // Backward-compatible: callers passing only a string still work fine.
+  const notify = (msg, type = 'info') => {
+    dispatch({ type: 'SET_NOTIFICATION', notification: { msg, type } });
     setTimeout(() => dispatch({ type: 'SET_NOTIFICATION', notification: null }), 3000);
   };
 
-  /** Update the player's username — validates uniqueness, persists everywhere */
   const updateUsername = async (newName) => {
     const trimmed = newName.trim();
     if (!trimmed) throw new Error('Username cannot be empty');
@@ -213,46 +202,32 @@ export function GameProvider({ children }) {
     if (trimmed.length > 20) throw new Error('Username must be 20 characters or less');
     if (!/^[A-Za-z0-9_ ]+$/.test(trimmed))
       throw new Error('Only letters, numbers, spaces and underscores allowed');
-
-    // Check availability (exclude self)
     const available = await checkNameAvailableForUid(trimmed, state.userId);
     if (!available) throw new Error('That name is already taken');
-
     await updatePlayerNameInRoom(state.userId, state.roomId, trimmed);
     localStorage.setItem(STORAGE_KEY, trimmed);
     dispatch({ type: 'SET_PLAYER_NAME', name: trimmed });
   };
 
-  /** Trigger Google sign-in redirect — called from LoginScreen */
   const loginWithGoogle = async () => {
     dispatch({ type: 'SET_AUTH_LOADING', value: true });
     dispatch({ type: 'SET_ERROR', error: null });
     try {
       await signInWithGoogle();
-      // Page will redirect to Google — onAuthStateChanged fires when it comes back
     } catch (err) {
-      const msg = err.message || 'Sign-in failed';
-      dispatch({ type: 'SET_ERROR', error: msg });
+      dispatch({ type: 'SET_ERROR', error: err.message || 'Sign-in failed' });
       dispatch({ type: 'SET_AUTH_LOADING', value: false });
     }
   };
 
-  /** Trigger Anonymous sign-in — called from LoginScreen */
   const loginAnonymously = async (customName) => {
     dispatch({ type: 'SET_AUTH_LOADING', value: true });
     dispatch({ type: 'SET_ERROR', error: null });
     try {
-      // Pre-store a placeholder so onAuthStateChanged knows a custom name is pending.
-      // We use a temp key so the main STORAGE_KEY isn't polluted before uid is known.
-      if (customName) {
-        sessionStorage.setItem('pending_guest_name', customName.trim());
-      }
-
+      if (customName) sessionStorage.setItem('pending_guest_name', customName.trim());
       const userCredential = await signInAnonymouslyUser();
       const uid = userCredential.user.uid;
-
       if (customName) {
-        // Ensure the name is unique before committing
         const uniqueName = await resolveUniqueName(uid, customName.trim());
         localStorage.setItem(STORAGE_KEY, uniqueName);
         sessionStorage.removeItem('pending_guest_name');
@@ -262,13 +237,11 @@ export function GameProvider({ children }) {
       dispatch({ type: 'SET_AUTH_LOADING', value: false });
     } catch (err) {
       sessionStorage.removeItem('pending_guest_name');
-      const msg = err.message || 'Anonymous sign-in failed';
-      dispatch({ type: 'SET_ERROR', error: msg });
+      dispatch({ type: 'SET_ERROR', error: err.message || 'Anonymous sign-in failed' });
       dispatch({ type: 'SET_AUTH_LOADING', value: false });
     }
   };
 
-  /** Sign out completely */
   const logout = async () => {
     if (state.userId) await removeUserOnline(state.userId).catch(() => {});
     localStorage.removeItem(STORAGE_KEY);
@@ -281,7 +254,7 @@ export function GameProvider({ children }) {
     <GameContext.Provider value={{
       state, setRoomId, leaveRoom, setLoading, setError, notify,
       loginWithGoogle, loginAnonymously, logout, updateUsername,
-      loginWithName: async () => {},  // no-op alias
+      loginWithName: async () => {},
     }}>
       {children}
     </GameContext.Provider>

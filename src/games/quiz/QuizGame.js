@@ -250,7 +250,7 @@ export function QuizGame() {
     tick();
     timerRef.current = setInterval(tick, 250);
     return () => clearInterval(timerRef.current);
-  }, [q?.currentIndex, q?.phase, q?.questionStartTime]);
+  }, [q, q?.currentIndex, q?.phase, q?.questionStartTime]);
 
   // ── Stable refs so callbacks don't depend on q / room directly ────────
   const qRef    = useRef(q);
@@ -282,7 +282,7 @@ export function QuizGame() {
   useEffect(() => {
     if (!isHost || !q || q.phase !== 'question') return;
     checkAdvance();
-  }, [q?.answers, q?.phase, isHost, checkAdvance]);
+  }, [q, q?.answers, q?.phase, isHost, checkAdvance]);
 
   // Time-out fallback — fires once when the timer reaches zero
   useEffect(() => {
@@ -292,7 +292,7 @@ export function QuizGame() {
     );
     const id = setTimeout(checkAdvance, remaining * 1000 + 300); // +300 ms buffer
     return () => clearTimeout(id);
-  }, [q?.currentIndex, q?.phase, isHost, checkAdvance, q?.questionStartTime]);
+  }, [q, q?.currentIndex, q?.phase, q?.questionStartTime, isHost, checkAdvance]);
 
   // Auto-advance from reveal after revealTime (host only)
   useEffect(() => {
@@ -301,7 +301,7 @@ export function QuizGame() {
       advanceQuizQuestion(roomId).catch(console.error);
     }, QUIZ_SETTINGS.revealTime * 1000);
     return () => clearTimeout(id);
-  }, [q?.currentIndex, q?.phase, isHost, roomId]);
+  }, [q, q?.currentIndex, q?.phase, isHost, roomId]);
 
   // ── Answer handler ────────────────────────────────────────────────────
   // FIX: use qRef so this callback is not recreated on every snapshot
@@ -342,7 +342,6 @@ export function QuizGame() {
     t => t.label.toLowerCase() === (q.topic || '').toLowerCase()
   );
   const topicIcon  = topicPreset?.icon  || '🧠';
-  const topicColor = topicPreset?.color || '#4CC9F0';
   const timePct    = (timeLeft / QUIZ_SETTINGS.answerTime) * 100;
   const answered   = Object.keys(q.answers || {}).length;
   const total      = q.playerOrder.length;

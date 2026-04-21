@@ -163,13 +163,18 @@ export function useCanvas(roomId, canDraw) {
 
     currentStrokeRef.current.push(pos);
 
-    // Throttle live-stroke writes to Firebase (every 30ms) — full points, no batching gaps
+    // Throttle live-stroke writes to Firebase (every 30ms) — send only the
+    // recent tail of the stroke, not the entire accumulated point array.
+    // FIX: capping to MAX_LIVE_POINTS prevents multi-second strokes from sending
+    // hundreds of points (~30KB) per write; 80 points is more than enough for a
+    // smooth live preview. The full stroke is committed on mouseUp anyway.
+    const MAX_LIVE_POINTS = 80;
     if (!liveFlushTimerRef.current) {
       liveFlushTimerRef.current = setTimeout(() => {
         liveFlushTimerRef.current = null;
         if (isDrawingRef.current && currentStrokeRef.current.length > 0) {
           setLiveStroke(roomId, {
-            points: [...currentStrokeRef.current],
+            points: currentStrokeRef.current.slice(-MAX_LIVE_POINTS),
             color,
             size: brushSize,
             tool,

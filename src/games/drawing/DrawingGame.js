@@ -13,8 +13,8 @@ import { DrawingCanvas } from './Canvas';
 import { WordSelector } from './WordSelector';
 import { RoundEndScreen } from './RoundEndScreen';
 import { FinalScores } from './FinalScores';
-import { revealHintCharacter, submitGuess, sendChatMessage , safeUpdateDoc } from '../../firebase/services';
-import { updateDoc, doc } from 'firebase/firestore';
+import { revealHintCharacter, submitGuess, sendChatMessage, safeUpdateDoc } from '../../firebase/services';
+import { doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 
 // ─── Keyboard layout ─────────────────────────────────────────────────────────
@@ -361,7 +361,7 @@ export function DrawingGame() {
           background: 'linear-gradient(135deg, #4CC9F0, #F72585)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>
-          Draw & Guess
+          Scribbly
         </Typography>
         <Box display="flex" alignItems="center" gap={0.8}>
           {isDrawer && isPlaying && (
