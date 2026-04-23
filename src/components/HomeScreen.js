@@ -20,6 +20,8 @@ import ChatIcon from '@mui/icons-material/Chat';
 import PersonIcon from '@mui/icons-material/Person';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SendIcon from '@mui/icons-material/Send';
+import SportsMotorsportsIcon from '@mui/icons-material/SportsMotorsports';
+import { RacingGame } from '../games/solo/RacingGame';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
@@ -29,6 +31,7 @@ import { QUIZ_TOPICS } from '../games/quiz/quizConstants';
 import {
   listenActiveGames, getUserGameHistory,
   sendGlobalMessage, listenGlobalChat,
+  listenSoloLeaderboard, getLocalSoloBest,
 } from '../firebase/services';
 import { getStoredSession } from '../hooks/useGameSession';
 import { ResumeBanner } from './GameSharedUI';
@@ -45,10 +48,11 @@ const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0',
 const RANK_MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
 const GAME_TYPE_LABEL = { drawing: 'Drawing', ludo: 'Ludo', snakeladder: 'Snake & Ladder', uno: 'UNO' };
 const NAV_ITEMS = [
-  { id: 'games',   label: 'Games',       icon: SportsEsportsIcon, color: '#4CC9F0' },
-  { id: 'chat',    label: 'Global Chat', icon: ChatIcon,          color: '#F72585' },
-  { id: 'profile', label: 'Profile',     icon: PersonIcon,        color: '#FFD166' },
-  { id: 'help',    label: 'How to Play',  icon: HelpOutlineIcon,  color: '#06D6A0' },
+  { id: 'games',        label: 'Games',         icon: SportsEsportsIcon,   color: '#4CC9F0' },
+  { id: 'singleplayer', label: 'Single Player', icon: SportsMotorsportsIcon, color: '#FF9F1C' },
+  { id: 'chat',         label: 'Global Chat',   icon: ChatIcon,            color: '#F72585' },
+  { id: 'profile',      label: 'Profile',       icon: PersonIcon,          color: '#FFD166' },
+  { id: 'help',         label: 'How to Play',   icon: HelpOutlineIcon,     color: '#06D6A0' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1395,16 +1399,245 @@ function ProfilePanel({ state, updateUsername, logout }) {
   );
 }
 
+// ─── Solo Leaderboard ─────────────────────────────────────────────────────────
+
+function SoloLeaderboard({ gameId, gameLabel, gameColor, userId }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const localBest = getLocalSoloBest(userId, gameId);
+
+  useEffect(() => {
+    setLoading(true);
+    const unsub = listenSoloLeaderboard(gameId, (data) => {
+      setEntries(data);
+      setLoading(false);
+    });
+    return () => unsub && unsub();
+  }, [gameId]);
+
+  const MEDAL = { 0: '🥇', 1: '🥈', 2: '🥉' };
+  const myEntry = entries.find(e => e.uid === userId);
+  const myRank = entries.findIndex(e => e.uid === userId);
+
+  return (
+    <Box sx={{ mt: 2.5 }}>
+      {/* Header row */}
+      <Box display="flex" alignItems="center" justifyContent="space-between" mb={1.2}>
+        <Box display="flex" alignItems="center" gap={0.8}>
+          <Box sx={{ width: 3, height: 14, borderRadius: 2, bgcolor: gameColor }} />
+          <Typography sx={{ fontWeight: 900, fontSize: '0.78rem', color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            {gameLabel} · Top Scores
+          </Typography>
+        </Box>
+        {localBest > 0 && !myEntry && (
+          <Typography sx={{ fontSize: '0.68rem', color: '#484f58', fontFamily: 'monospace', fontWeight: 700 }}>
+            Your best: {localBest.toLocaleString()}
+          </Typography>
+        )}
+      </Box>
+
+      <Box sx={{
+        borderRadius: '16px', overflow: 'hidden',
+        border: `1px solid ${gameColor}18`,
+        background: `linear-gradient(135deg, ${gameColor}05, rgba(14,18,27,0.95))`,
+      }}>
+        {loading ? (
+          <Box sx={{ py: 2.5, display: 'flex', justifyContent: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {[0, 1, 2].map(i => (
+                <Box key={i} sx={{
+                  width: 6, height: 6, borderRadius: '50%', bgcolor: gameColor,
+                  animation: 'pulse 1.2s ease-in-out infinite',
+                  animationDelay: `${i * 0.2}s`, opacity: 0.6,
+                  '@keyframes pulse': { '0%,100%': { transform: 'scale(0.8)', opacity: 0.4 }, '50%': { transform: 'scale(1.2)', opacity: 1 } },
+                }} />
+              ))}
+            </Box>
+          </Box>
+        ) : entries.length === 0 ? (
+          <Box sx={{ py: 3, textAlign: 'center' }}>
+            <Typography sx={{ fontSize: '1.5rem', mb: 0.5 }}>🏁</Typography>
+            <Typography sx={{ color: '#484f58', fontSize: '0.78rem', fontWeight: 600 }}>No scores yet — be the first!</Typography>
+          </Box>
+        ) : (
+          entries.map((entry, i) => {
+            const isMe = entry.uid === userId;
+            const medal = MEDAL[i];
+            return (
+              <Box
+                key={entry.uid}
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 1.2,
+                  px: 1.6, py: 1,
+                  borderBottom: i < entries.length - 1 ? `1px solid ${gameColor}10` : 'none',
+                  background: isMe ? `${gameColor}10` : 'transparent',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {/* Rank */}
+                <Box sx={{ width: 24, textAlign: 'center', flexShrink: 0 }}>
+                  {medal
+                    ? <Typography sx={{ fontSize: '0.9rem' }}>{medal}</Typography>
+                    : <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#484f58', fontFamily: 'monospace' }}>#{i + 1}</Typography>
+                  }
+                </Box>
+
+                {/* Name */}
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{
+                    fontWeight: isMe ? 900 : 700, fontSize: '0.82rem',
+                    color: isMe ? gameColor : '#c9d1d9',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {entry.name}
+                    {isMe && (
+                      <Typography component="span" sx={{
+                        fontSize: '0.56rem', fontWeight: 800, color: gameColor,
+                        bgcolor: `${gameColor}15`, px: 0.6, py: 0.1,
+                        borderRadius: '4px', border: `1px solid ${gameColor}30`, ml: 0.7,
+                      }}>YOU</Typography>
+                    )}
+                  </Typography>
+                </Box>
+
+                {/* Score */}
+                <Typography sx={{
+                  fontFamily: 'monospace', fontWeight: 900,
+                  fontSize: i === 0 ? '1rem' : '0.85rem',
+                  color: i === 0 ? gameColor : '#8b949e',
+                  flexShrink: 0,
+                }}>
+                  {entry.score.toLocaleString()}
+                </Typography>
+              </Box>
+            );
+          })
+        )}
+
+        {/* Your rank if outside top list */}
+        {!loading && myRank === -1 && localBest > 0 && (
+          <>
+            <Box sx={{ px: 1.6, py: 0.6, borderTop: `1px dashed ${gameColor}15` }}>
+              <Typography sx={{ fontSize: '0.62rem', color: '#484f58', fontWeight: 700, textAlign: 'center' }}>
+                · · ·
+              </Typography>
+            </Box>
+            <Box sx={{
+              display: 'flex', alignItems: 'center', gap: 1.2,
+              px: 1.6, py: 1, background: `${gameColor}08`,
+            }}>
+              <Box sx={{ width: 24, textAlign: 'center', flexShrink: 0 }}>
+                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#484f58', fontFamily: 'monospace' }}>
+                  —
+                </Typography>
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography sx={{ fontWeight: 900, fontSize: '0.82rem', color: gameColor }}>
+                  You
+                  <Typography component="span" sx={{
+                    fontSize: '0.56rem', fontWeight: 800, color: gameColor,
+                    bgcolor: `${gameColor}15`, px: 0.6, py: 0.1,
+                    borderRadius: '4px', border: `1px solid ${gameColor}30`, ml: 0.7,
+                  }}>YOU</Typography>
+                </Typography>
+              </Box>
+              <Typography sx={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.85rem', color: '#8b949e' }}>
+                {localBest.toLocaleString()}
+              </Typography>
+            </Box>
+          </>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+// ─── Single Player Panel ──────────────────────────────────────────────────────
+
+const SINGLE_PLAYER_GAMES = [
+  {
+    id: 'racing',
+    label: 'Endless Racing',
+    icon: '🏎️',
+    description: 'Dodge traffic and survive as long as you can!',
+    color: '#FF9F1C',
+    gradient: 'linear-gradient(135deg, #FF9F1C 0%, #EF476F 100%)',
+  },
+];
+
+function SinglePlayerPanel({ onLaunch, userId }) {
+  return (
+    <Box>
+      <Typography sx={{ color: '#8b949e', fontSize: '0.75rem', fontWeight: 700, mb: 2, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        Solo Games
+      </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        {SINGLE_PLAYER_GAMES.map((game) => (
+          <Box key={game.id}>
+            <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+              <Box
+                onClick={() => onLaunch(game.id)}
+                sx={{
+                  border: `1px solid ${game.color}28`, borderRadius: '18px',
+                  background: `linear-gradient(135deg, ${game.color}07, rgba(14,18,27,0.97))`,
+                  p: '14px 16px', cursor: 'pointer',
+                  boxShadow: `0 4px 20px ${game.color}10`,
+                  position: 'relative', overflow: 'hidden',
+                  transition: 'all 0.18s',
+                  '&:hover': { border: `1px solid ${game.color}50`, boxShadow: `0 4px 28px ${game.color}20` },
+                }}
+              >
+                <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: game.gradient, borderRadius: '18px 18px 0 0' }} />
+                <Box display="flex" alignItems="center" gap={1.5}>
+                  <Box sx={{
+                    width: 48, height: 48, borderRadius: '12px', flexShrink: 0,
+                    background: game.gradient, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: '1.6rem',
+                    boxShadow: `0 4px 12px ${game.color}40`,
+                  }}>
+                    {game.icon}
+                  </Box>
+                  <Box flex={1} minWidth={0}>
+                    <Typography sx={{ fontWeight: 900, fontSize: '0.95rem', color: game.color, mb: 0.3 }}>
+                      {game.label}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.75rem', color: '#8b949e' }}>
+                      {game.description}
+                    </Typography>
+                  </Box>
+                  <Typography sx={{ fontSize: '1.2rem', color: '#484f58' }}>▶</Typography>
+                </Box>
+              </Box>
+            </motion.div>
+
+            {/* Leaderboard for each game */}
+            <SoloLeaderboard
+              gameId={game.id}
+              gameLabel={game.label}
+              gameColor={game.color}
+              userId={userId}
+            />
+          </Box>
+        ))}
+      </Box>
+      <Typography sx={{ color: '#484f58', fontSize: '0.7rem', fontWeight: 600, mt: 3, textAlign: 'center' }}>
+        More solo games coming soon!
+      </Typography>
+    </Box>
+  );
+}
+
 // ─── Main HomeScreen ───────────────────────────────────────────────────────────
 
 export function HomeScreen() {
   const { state, logout, updateUsername } = useGameContext();
-  const { playerName } = state;
+  const { playerName, userId } = state;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('games');
   const [localError, setLocalError] = useState('');
+  const [singlePlayerGame, setSinglePlayerGame] = useState(null);
 
-  const SECTION_LABEL = { games: '🎮 Games', chat: '💬 Global Chat', profile: '👤 Profile', help: '📖 How to Play' };
+  const SECTION_LABEL = { games: '🎮 Games', singleplayer: '🏎️ Single Player', chat: '💬 Global Chat', profile: '👤 Profile', help: '📖 How to Play' };
   const activeMeta = NAV_ITEMS.find(n => n.id === activeSection);
 
   return (
@@ -1476,6 +1709,12 @@ export function HomeScreen() {
             </motion.div>
           )}
           
+          {activeSection === 'singleplayer' && (
+            <motion.div key="singleplayer" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 14 }} transition={{ duration: 0.22 }}>
+              <SinglePlayerPanel onLaunch={(id) => setSinglePlayerGame(id)} userId={userId} />
+            </motion.div>
+          )}
+
           {activeSection === 'help' && (
             <motion.div key="help" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 14 }} transition={{ duration: 0.22 }}>
               <Box sx={{ p: 3, color: 'white' }}>
@@ -1505,6 +1744,11 @@ export function HomeScreen() {
           )}
         </AnimatePresence>
       </Box>
+
+      {/* Single-player game overlay */}
+      {singlePlayerGame === 'racing' && (
+        <RacingGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
+      )}
     </Box>
   );
 }

@@ -633,3 +633,65 @@ export const listenActiveGames = (callback) => {
     }
   });
 };
+
+// ─── Solo Score Services ─────────────────────────────────────────────────────
+
+const SOLO_SCORE_LS_KEY = (uid, gameId) => `solo_best_${gameId}_${uid}`;
+
+/**
+ * Save a solo game score.
+ * - Always writes to localStorage for instant feedback.
+ * - Writes to Firestore if the new score beats the stored best (any auth user).
+ */
+export const saveSoloScore = async (uid, playerName, gameId, score) => {
+  if (!uid || !gameId || score == null) return;
+
+  // 1. localStorage: update if better
+  const lsKey = SOLO_SCORE_LS_KEY(uid, gameId);
+  const localBest = parseInt(localStorage.getItem(lsKey) || '0', 10);
+  if (score > localBest) localStorage.setItem(lsKey, String(score));
+
+  // 2. Firestore: update doc if this score beats current best
+  try {
+    const docRef = doc(db, 'soloScores', `${uid}_${gameId}`);
+    const snap = await getDoc(docRef);
+    if (!snap.exists() || score > (snap.data().score || 0)) {
+      await setDoc(docRef, {
+        uid,
+        name: playerName || 'Player',
+        gameId,
+        score,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (e) {
+    console.warn('saveSoloScore Firestore failed:', e);
+  }
+};
+
+/**
+ * Get the local personal best from localStorage (synchronous).
+ */
+export const getLocalSoloBest = (uid, gameId) => {
+  if (!uid || !gameId) return 0;
+  return parseInt(localStorage.getItem(SOLO_SCORE_LS_KEY(uid, gameId)) || '0', 10);
+};
+
+/**
+ * Listen to the top N scores for a game. Returns an unsubscribe fn.
+ */
+export const listenSoloLeaderboard = (gameId, callback, limitCount = 8) => {
+  const q = query(
+    collection(db, 'soloScores'),
+    where('gameId', '==', gameId),
+    orderBy('score', 'desc'),
+    limit(limitCount)
+  );
+  return onSnapshot(q, (snap) => {
+    const entries = snap.docs.map(d => d.data());
+    callback(entries);
+  }, (err) => {
+    console.warn('listenSoloLeaderboard error:', err);
+    callback([]);
+  });
+};
