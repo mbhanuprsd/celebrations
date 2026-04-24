@@ -47,7 +47,7 @@ jobs:
             --title "Release $TAG" \
             --notes "🚀 Deployed to Firebase Hosting
 
-**Commit:** $COMMIT_MSG
-**Triggered by:** ${{ github.actor }}
-**Commit SHA:** ${{ github.sha }}" \
-            --latest
+          **Commit:** $COMMIT_MSG
+          **Triggered by:** ${{ github.actor }}
+          **Commit SHA:** ${{ github.sha }}" \
+                      --latest

@@ -55,7 +55,7 @@ service cloud.firestore {
 
     match /wordBank/{lang} {
       allow read: if isAuthed();
-      allow write: if isAuthed();
+      allow write: if false;
     }
   }
 }
