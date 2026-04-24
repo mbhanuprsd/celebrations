@@ -22,6 +22,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SendIcon from '@mui/icons-material/Send';
 import SportsMotorsportsIcon from '@mui/icons-material/SportsMotorsports';
 import { RacingGame } from '../games/solo/RacingGame';
+import { TetrisGame } from '../games/solo/TetrisGame';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
@@ -1563,6 +1564,14 @@ const SINGLE_PLAYER_GAMES = [
     color: '#FF9F1C',
     gradient: 'linear-gradient(135deg, #FF9F1C 0%, #EF476F 100%)',
   },
+  {
+    id: 'tetris',
+    label: 'Tetris',
+    icon: '🧩',
+    description: 'Clear lines before the stack reaches the top!',
+    color: '#c77dff',
+    gradient: 'linear-gradient(135deg, #c77dff 0%, #7209B7 100%)',
+  },
 ];
 
 function SinglePlayerPanel({ onLaunch, userId }) {
@@ -1748,6 +1757,9 @@ export function HomeScreen() {
       {/* Single-player game overlay */}
       {singlePlayerGame === 'racing' && (
         <RacingGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
+      )}
+      {singlePlayerGame === 'tetris' && (
+        <TetrisGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
       )}
     </Box>
   );
