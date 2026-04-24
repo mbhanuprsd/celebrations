@@ -3,7 +3,7 @@ import React, { createContext, useContext, useReducer, useEffect, useRef } from 
 import {
   signInWithGoogle, signInAnonymouslyUser, signOutUser, listenRoom, listenChat,
   setUserOnline, removeUserOnline, checkNameAvailableForUid, joinRoom,
-  updatePlayerNameInRoom,
+  updatePlayerNameInRoom, loadWordBank
 } from '../firebase/services';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -143,6 +143,9 @@ export function GameProvider({ children }) {
     });
     return unsub;
   }, []);
+
+  // Load word bank on mount so it's ready for quiz game (and cached for later)
+  useEffect(() => { loadWordBank(); }, []);
 
   // ── Room listener ──────────────────────────────────────────────────────────
   useEffect(() => {

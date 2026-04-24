@@ -58,7 +58,7 @@ export const GAME_META = {
     defaultSettings: { maxPlayers: 4 },
   },
   uno: {
-    label: 'UNO',
+    label: 'Uno',
     icon: '🃏',
     description: 'Match colors and numbers — empty your hand first!',
     howToPlay: 'Match the current card by color or number. Use Action cards like Skip, Reverse, and Draw Two to disrupt opponents. Remember to shout "UNO!" when you have one card left!',

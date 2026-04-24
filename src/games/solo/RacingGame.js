@@ -249,39 +249,66 @@ export function RacingGame({ onExit, userId, playerName }) {
 
   return (
     <Box sx={{
-      position: 'fixed', inset: 0, bgcolor: '#080c12', zIndex: 9999,
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'linear-gradient(160deg, #080c12 0%, #0a0e1a 100%)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      overflow: 'hidden',
     }}>
+      {/* Ambient glow orbs */}
+      <Box sx={{ position: 'absolute', width: 280, height: 280, borderRadius: '50%', top: '-60px', right: '-60px',
+        background: 'radial-gradient(circle, #FF9F1C10, transparent 70%)', pointerEvents: 'none' }} />
+      <Box sx={{ position: 'absolute', width: 200, height: 200, borderRadius: '50%', bottom: '8%', left: '-50px',
+        background: 'radial-gradient(circle, #4CC9F010, transparent 70%)', pointerEvents: 'none' }} />
+
       {/* Header */}
-      <Box sx={{ width: W, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, px: 0.5 }}>
+      <Box sx={{ width: W, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.2, px: 0.5 }}>
         <Button
           startIcon={<ArrowBackIcon />}
           onClick={onExit}
           size="small"
-          sx={{ color: '#8b949e', fontSize: '0.75rem', fontWeight: 700, '&:hover': { color: '#4CC9F0' } }}
+          sx={{ color: '#484f58', fontSize: '0.72rem', fontWeight: 700, minWidth: 0, px: 1, borderRadius: '10px',
+            '&:hover': { color: '#FF9F1C', bgcolor: 'rgba(255,159,28,0.08)' } }}
         >
-          Exit
+          Back
         </Button>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography sx={{ color: '#FFD166', fontWeight: 900, fontSize: '1.1rem', fontFamily: 'monospace' }}>
-            🏁 {score.toLocaleString()}
+
+        {/* Score pill */}
+        <Box sx={{
+          display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 0.6,
+          borderRadius: '20px', background: 'rgba(255,159,28,0.08)',
+          border: '1px solid rgba(255,159,28,0.22)',
+        }}>
+          <Typography sx={{ fontSize: '0.85rem' }}>🏁</Typography>
+          <Typography sx={{ color: '#FFD166', fontWeight: 900, fontSize: '1rem', fontFamily: 'monospace', lineHeight: 1 }}>
+            {score.toLocaleString()}
           </Typography>
           {bestScore > 0 && (
-            <Typography sx={{ color: '#484f58', fontWeight: 700, fontSize: '0.7rem', fontFamily: 'monospace' }}>
-              BEST {bestScore.toLocaleString()}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
+              <Box sx={{ width: 1, height: 14, bgcolor: 'rgba(255,255,255,0.1)' }} />
+              <Typography sx={{ color: '#484f58', fontWeight: 700, fontSize: '0.62rem', fontFamily: 'monospace' }}>
+                BEST {bestScore.toLocaleString()}
+              </Typography>
+            </Box>
           )}
         </Box>
+
         <Box sx={{ width: 60 }} />
       </Box>
 
-      {/* Canvas */}
-      <Box sx={{ position: 'relative' }}>
+      {/* Canvas wrapper */}
+      <Box sx={{ position: 'relative', borderRadius: '16px', boxShadow: '0 0 60px rgba(255,159,28,0.07)' }}>
+        {/* Top gradient accent */}
+        <Box sx={{
+          position: 'absolute', top: -2, left: 0, right: 0, height: 3, zIndex: 1,
+          background: 'linear-gradient(90deg, #FF9F1C, #EF476F, #4CC9F0)',
+          borderRadius: '16px 16px 0 0',
+        }} />
+
         <canvas
           ref={canvasRef}
           width={W}
           height={H}
-          style={{ borderRadius: 16, border: '1px solid rgba(255,255,255,0.08)', display: 'block' }}
+          style={{ borderRadius: 16, border: '1px solid rgba(255,159,28,0.15)', display: 'block' }}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         />
@@ -291,25 +318,45 @@ export function RacingGame({ onExit, userId, playerName }) {
           <Box sx={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', borderRadius: 4,
-            background: 'rgba(8,12,18,0.82)', backdropFilter: 'blur(4px)',
+            background: 'rgba(8,12,18,0.88)', backdropFilter: 'blur(8px)',
           }}>
-            <Typography sx={{ fontSize: '3rem', mb: 1 }}>🏎️</Typography>
-            <Typography sx={{ fontWeight: 900, fontSize: '1.6rem', color: '#4CC9F0', mb: 0.5 }}>Endless Racing</Typography>
-            <Typography sx={{ color: '#8b949e', fontSize: '0.82rem', mb: 3, textAlign: 'center', px: 3 }}>
+            <Box sx={{
+              width: 80, height: 80, borderRadius: '22px', mb: 2,
+              background: 'linear-gradient(135deg, #FF9F1C22, #EF476F22)',
+              border: '1px solid rgba(255,159,28,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.6rem',
+            }}>🏎️</Box>
+            <Typography sx={{
+              fontWeight: 900, fontSize: '1.7rem', mb: 0.5,
+              background: 'linear-gradient(135deg, #FF9F1C, #EF476F)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            }}>
+              ENDLESS RACING
+            </Typography>
+            <Typography sx={{ color: '#6b7280', fontSize: '0.8rem', mb: 3, textAlign: 'center', px: 4 }}>
               Dodge traffic and survive as long as you can!
             </Typography>
-            <Typography sx={{ color: '#484f58', fontSize: '0.75rem', mb: 0.5 }}>⬅️ ➡️ Arrow keys or swipe to steer</Typography>
+            <Box sx={{
+              display: 'flex', gap: 1, mb: 3,
+              p: '8px 16px', borderRadius: '12px',
+              bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              <Typography sx={{ color: '#FF9F1C', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.75rem',
+                bgcolor: 'rgba(255,159,28,0.1)', px: 1, py: 0.2, borderRadius: '6px',
+                border: '1px solid rgba(255,159,28,0.2)' }}>⬅️ ➡️</Typography>
+              <Typography sx={{ color: '#484f58', fontSize: '0.75rem', alignSelf: 'center' }}>Arrow keys or swipe to steer</Typography>
+            </Box>
             <Button
               onClick={start}
               variant="contained"
               sx={{
-                mt: 2.5, px: 4, py: 1.2, fontWeight: 900, fontSize: '1rem', borderRadius: '14px',
-                background: 'linear-gradient(135deg, #4CC9F0, #7209B7)',
-                boxShadow: '0 4px 24px #4CC9F040',
-                '&:hover': { background: 'linear-gradient(135deg, #6dd5f5, #9314d4)' },
+                px: 5, py: 1.1, fontWeight: 900, fontSize: '0.95rem', borderRadius: '14px',
+                background: 'linear-gradient(135deg, #FF9F1C, #EF476F)',
+                boxShadow: '0 4px 24px #FF9F1C40',
+                '&:hover': { boxShadow: '0 6px 32px #FF9F1C60' },
               }}
             >
-              Start Game
+              🚦 Start Race
             </Button>
           </Box>
         )}
@@ -319,31 +366,33 @@ export function RacingGame({ onExit, userId, playerName }) {
           <Box sx={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', borderRadius: 4,
-            background: 'rgba(8,12,18,0.88)', backdropFilter: 'blur(6px)',
+            background: 'rgba(8,12,18,0.93)', backdropFilter: 'blur(10px)',
           }}>
-            <Typography sx={{ fontSize: '2.5rem', mb: 1 }}>💥</Typography>
-            <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#EF476F', mb: 0.5 }}>Crashed!</Typography>
+            <Typography sx={{ fontSize: '3rem', mb: 1 }}>💥</Typography>
+            <Typography sx={{ fontWeight: 900, fontSize: '1.6rem', color: '#EF476F', mb: 1 }}>Total Wreckage!</Typography>
             {score >= bestScore && score > 0 && (
-              <Typography sx={{ color: '#FFD166', fontWeight: 900, fontSize: '0.8rem', mb: 0.5,
-                bgcolor: 'rgba(255,209,102,0.12)', px: 1.5, py: 0.3, borderRadius: '8px',
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 1,
+                bgcolor: 'rgba(255,209,102,0.1)', px: 1.5, py: 0.4, borderRadius: '10px',
                 border: '1px solid rgba(255,209,102,0.25)' }}>
-                🏆 New Personal Best!
-              </Typography>
+                <Typography sx={{ fontSize: '0.9rem' }}>🏆</Typography>
+                <Typography sx={{ color: '#FFD166', fontWeight: 900, fontSize: '0.78rem' }}>New Personal Best!</Typography>
+              </Box>
             )}
-            <Typography sx={{ color: '#8b949e', fontSize: '0.85rem', mb: 0.5 }}>Score</Typography>
-            <Typography sx={{ fontWeight: 900, fontSize: '2.2rem', color: '#FFD166', fontFamily: 'monospace', mb: 3 }}>
+            <Typography sx={{ color: '#484f58', fontSize: '0.72rem', mb: 0.5, fontWeight: 700, textTransform: 'uppercase' }}>Distance</Typography>
+            <Typography sx={{ fontWeight: 900, fontSize: '2.4rem', color: '#FFD166', fontFamily: 'monospace', mb: 3, lineHeight: 1 }}>
               {score.toLocaleString()}
             </Typography>
             <Button
               onClick={start}
               variant="contained"
               sx={{
-                px: 4, py: 1.2, fontWeight: 900, fontSize: '1rem', borderRadius: '14px',
-                background: 'linear-gradient(135deg, #4CC9F0, #7209B7)',
-                boxShadow: '0 4px 24px #4CC9F040',
+                px: 5, py: 1.1, fontWeight: 900, fontSize: '0.95rem', borderRadius: '14px',
+                background: 'linear-gradient(135deg, #FF9F1C, #EF476F)',
+                boxShadow: '0 4px 24px #FF9F1C40',
+                '&:hover': { boxShadow: '0 6px 32px #FF9F1C60' },
               }}
             >
-              Play Again
+              🚦 Race Again
             </Button>
           </Box>
         )}
