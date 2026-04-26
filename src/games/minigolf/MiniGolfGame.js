@@ -1,5 +1,5 @@
 // src/games/minigolf/MiniGolfGame.js
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Box, Typography, Button, Avatar, Chip, LinearProgress } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
@@ -275,23 +275,24 @@ export function MiniGolfGame() {
 
   const [animating, setAnimating] = useState(false);
   const [localStrokes, setLocalStrokes] = useState(0);
-  const [sunkThisHole, setSunkThisHole] = useState(false);
   const [shotMsg, setShotMsg] = useState('');
   const [powerPct, setPowerPct] = useState(0);
 
   const isMyTurn  = u && u.playerOrder?.[u.currentIndex] === userId;
   const holeData  = u ? (HOLES[u.currentHoleIdx] || HOLES[0]) : HOLES[0];
-  const myBall    = u?.balls?.[userId];
-  const holeFinished = u?.holeFinished || [];
+  const holeFinished = useMemo(() => u?.holeFinished || [], [u?.holeFinished]);
   const iAlreadySunk = holeFinished.includes(userId);
 
   // ── Assign stable colours to players ──────────────────────────────────
-  const playerColors = {};
-  if (u?.playerOrder) {
-    u.playerOrder.forEach((uid, i) => {
-      playerColors[uid] = BALL_COLORS[i % BALL_COLORS.length];
-    });
-  }
+  const playerColors = useMemo(() => {
+    const colors = {};
+    if (u?.playerOrder) {
+      u.playerOrder.forEach((uid, i) => {
+        colors[uid] = BALL_COLORS[i % BALL_COLORS.length];
+      });
+    }
+    return colors;
+  }, [u?.playerOrder]);
 
   // ── Sync firebase ball positions into local ref ──────────────────────
   useEffect(() => {
@@ -305,9 +306,8 @@ export function MiniGolfGame() {
     if (!u) return;
     const b = u.balls?.[userId];
     setLocalStrokes(b?.strokes ?? 0);
-    setSunkThisHole(false);
     setShotMsg('');
-  }, [u?.currentHoleIdx]);
+  }, [u?.currentHoleIdx, userId, u]);
 
   // ── Canvas draw loop ──────────────────────────────────────────────────
   const redraw = useCallback(() => {
@@ -327,7 +327,7 @@ export function MiniGolfGame() {
 
   useEffect(() => {
     redraw();
-  });
+  }, [redraw]);
 
   // ── Physics animation loop ──────────────────────────────────────────
   const runPhysics = useCallback((uid, strokes) => {
@@ -350,7 +350,6 @@ export function MiniGolfGame() {
       setAnimating(false);
       const wasSunk = result === 'sunk';
       if (wasSunk) {
-        setSunkThisHole(true);
         setShotMsg('⛳ In the hole!');
       } else if (currentStrokes >= MAX_STROKES) {
         setShotMsg(`⛳ Max strokes! (${currentStrokes})`);

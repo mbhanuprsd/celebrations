@@ -1,5 +1,5 @@
 // src/games/minigolf/minigolfFirebaseService.js
-import { doc, runTransaction, getDoc } from 'firebase/firestore';
+import { doc, runTransaction } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { HOLES, MAX_STROKES } from './minigolfConstants';
 import { sendSystemMessage, safeUpdateDoc } from '../../firebase/services';

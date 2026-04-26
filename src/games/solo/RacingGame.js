@@ -245,7 +245,7 @@ export function RacingGame({ onExit, userId, playerName }) {
 
     animRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animRef.current);
-  }, [gameStatus]);
+  }, [gameStatus, playerName, userId]);
 
   return (
     <Box sx={{

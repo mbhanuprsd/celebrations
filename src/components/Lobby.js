@@ -154,7 +154,7 @@ export function Lobby() {
       setGenStatus('done');
       setGenCount(room.quizQuestions.length);
     }
-  }, [room?.quizQuestions?.length, isHost, room?.gameType]);
+  }, [room, isHost]);
 
   if (!room) return null;
 
