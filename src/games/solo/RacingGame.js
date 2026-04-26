@@ -297,6 +297,7 @@ export function RacingGame({ onExit, userId, playerName }) {
 
       {/* Canvas wrapper */}
       <Box sx={{ position: 'relative', borderRadius: '16px', boxShadow: '0 0 60px rgba(255,159,28,0.07)' }}>
+
         {/* Top gradient accent */}
         <Box sx={{
           position: 'absolute', top: -2, left: 0, right: 0, height: 3, zIndex: 1,
@@ -397,6 +398,36 @@ export function RacingGame({ onExit, userId, playerName }) {
           </Box>
         )}
       </Box>
+
+      {/* Mobile Controls */}
+      {gameStatus === 'playing' && (
+        <Box sx={{
+          width: W, display: 'flex', justifyContent: 'space-between', mt: 1.5, px: 1, gap: 2,
+        }}>
+          {[{ label: '⬅', dir: 'left', color: '#FF9F1C' }, { label: '➡', dir: 'right', color: '#4CC9F0' }].map(({ label, dir, color }) => (
+            <Box
+              key={dir}
+              onPointerDown={(e) => { e.preventDefault(); handleSwipe(dir); }}
+              sx={{
+                flex: 1, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: '14px', fontSize: '1.6rem',
+                background: 'rgba(255,255,255,0.04)',
+                border: `1px solid ${color}28`,
+                cursor: 'pointer', userSelect: 'none',
+                transition: 'all 0.1s',
+                '&:active': { background: `${color}18`, border: `1px solid ${color}60`, transform: 'scale(0.96)' },
+              }}
+            >
+              {label}
+            </Box>
+          ))}
+        </Box>
+      )}
+      {gameStatus === 'playing' && (
+        <Typography sx={{ mt: 0.8, color: '#2d3340', fontSize: '0.62rem', fontWeight: 700 }}>
+          Arrow keys or tap buttons to steer
+        </Typography>
+      )}
     </Box>
   );
 }

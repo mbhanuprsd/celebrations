@@ -568,6 +568,57 @@ export function TetrisGame({ onExit, userId, playerName }) {
           </Box>
         </Box>
       </Box>
+
+      {/* Mobile Controls */}
+      {gameStatus === 'playing' && (
+        <Box sx={{ width: TOTAL_W, mt: 1.5 }}>
+          {/* Top row: Left / Rotate / Right */}
+          <Box sx={{ display: 'flex', gap: 1.2, mb: 1 }}>
+            {[
+              { label: '\u2190', action: () => move(-1), color: '#c77dff' },
+              { label: '\u21ba', action: rotatePiece, color: '#06D6A0', flex: 1.4 },
+              { label: '\u2192', action: () => move(1), color: '#c77dff' },
+            ].map(({ label, action, color, flex }) => (
+              <Box
+                key={label}
+                onPointerDown={(e) => { e.preventDefault(); action(); }}
+                sx={{
+                  flex: flex || 1, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '12px', fontSize: '1.3rem', fontWeight: 900,
+                  background: 'rgba(255,255,255,0.04)', border: `1px solid ${color}28`,
+                  cursor: 'pointer', userSelect: 'none', color,
+                  transition: 'all 0.1s',
+                  '&:active': { background: `${color}18`, border: `1px solid ${color}60`, transform: 'scale(0.94)' },
+                }}
+              >
+                {label}
+              </Box>
+            ))}
+          </Box>
+          {/* Bottom row: Soft Drop / Hard Drop */}
+          <Box sx={{ display: 'flex', gap: 1.2 }}>
+            {[
+              { label: '\u2193 Soft', action: softDrop, color: '#4CC9F0' },
+              { label: '\u23ec Hard Drop', action: hardDrop, color: '#FFD166' },
+            ].map(({ label, action, color }) => (
+              <Box
+                key={label}
+                onPointerDown={(e) => { e.preventDefault(); action(); }}
+                sx={{
+                  flex: 1, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '12px', fontSize: '0.82rem', fontWeight: 800,
+                  background: 'rgba(255,255,255,0.04)', border: `1px solid ${color}28`,
+                  cursor: 'pointer', userSelect: 'none', color,
+                  transition: 'all 0.1s',
+                  '&:active': { background: `${color}18`, border: `1px solid ${color}60`, transform: 'scale(0.94)' },
+                }}
+              >
+                {label}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 }

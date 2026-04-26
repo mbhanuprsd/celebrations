@@ -23,6 +23,7 @@ import BadgeIcon from '@mui/icons-material/Badge';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { RacingGame } from '../games/solo/RacingGame';
 import { TetrisGame } from '../games/solo/TetrisGame';
+import { FlappyBirdGame } from '../games/solo/FlappyBirdGame';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
@@ -1571,6 +1572,14 @@ const SINGLE_PLAYER_GAMES = [
     color: '#c77dff',
     gradient: 'linear-gradient(135deg, #c77dff 0%, #7209B7 100%)',
   },
+  {
+    id: 'flappy',
+    label: 'Flappy Bird',
+    icon: '🐦',
+    description: 'Tap to flap through pipes and set a new high score!',
+    color: '#06D6A0',
+    gradient: 'linear-gradient(135deg, #06D6A0 0%, #4CC9F0 100%)',
+  },
 ];
 
 function SinglePlayerPanel({ onLaunch, userId }) {
@@ -1773,6 +1782,9 @@ export function HomeScreen() {
       )}
       {singlePlayerGame === 'tetris' && (
         <TetrisGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
+      )}
+      {singlePlayerGame === 'flappy' && (
+        <FlappyBirdGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
       )}
     </Box>
   );
