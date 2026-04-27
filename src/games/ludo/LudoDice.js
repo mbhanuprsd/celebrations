@@ -34,8 +34,17 @@ export function LudoDice({ value, canRoll, onRoll, myColor, colorHex }) {
   const handleRoll = async () => {
     if (!canRoll || rolling) return;
     setRolling(true);
-    setTimeout(() => setRolling(false), 550);
-    await onRoll();
+    
+    // Start the animation immediately
+    const rollPromise = onRoll();
+    
+    // Ensure the animation lasts at least 550ms, but also waits for the Firebase update
+    await Promise.all([
+      rollPromise,
+      new Promise(resolve => setTimeout(resolve, 550))
+    ]);
+    
+    setRolling(false);
   };
 
   return (

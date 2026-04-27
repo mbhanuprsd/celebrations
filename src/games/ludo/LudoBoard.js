@@ -265,10 +265,11 @@ function GridLines() {
 }
 
 // ─── Piece token ──────────────────────────────────────────────────────────
-function LudoPiece({ color, piece, isMovable, onClick, stackOffset = 0 }) {
+function LudoPiece({ color, piece, isMovable, onClick, stackOffset = 0, lastMove }) {
   const coord = getPieceCoord(color, piece.step, piece.id);
   const c = LUDO_COLORS[color];
   const R = S * 0.3;
+
 
   return (
     <motion.g
@@ -276,7 +277,7 @@ function LudoPiece({ color, piece, isMovable, onClick, stackOffset = 0 }) {
       onClick={isMovable ? () => onClick(piece.id) : undefined}
       initial={false}
       animate={{ x: coord.x + stackOffset * 6, y: coord.y + stackOffset * -6 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
     >
       {/* Pulse ring */}
       {isMovable && (
@@ -346,12 +347,13 @@ export function LudoBoard({ ludoState, userId, onMovePiece }) {
         out.push(
           <LudoPiece key={`${color}-${piece.id}`}
             color={color} piece={piece} isMovable={movable}
-            onClick={onMovePiece} stackOffset={si} />
+            onClick={onMovePiece} stackOffset={si} 
+            lastMove={ludoState.lastMove && ludoState.lastMove.pieceId === piece.id ? ludoState.lastMove : null} />
         );
       });
     });
     return out;
-  }, [piecesByPosition, myColor, movablePieceIds, onMovePiece]);
+  }, [piecesByPosition, myColor, movablePieceIds, onMovePiece, ludoState.lastMove]);
 
   return (
     <svg viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}

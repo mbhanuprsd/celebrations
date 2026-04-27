@@ -69,15 +69,21 @@ function TimerBar({ totalTime, startTime, onTimeout }) {
   useEffect(() => {
     if (!startTime) return;
     calledRef.current = false;
+    
+    let frameId;
     const tick = () => {
       const elapsed = (Date.now() - startTime) / 1000;
       const left    = Math.max(0, totalTime - elapsed);
       setTimeLeft(left);
-      if (left === 0 && !calledRef.current) { calledRef.current = true; onTimeout?.(); }
+      if (left === 0 && !calledRef.current) { 
+        calledRef.current = true; 
+        onTimeout?.(); 
+      }
+      frameId = requestAnimationFrame(tick);
     };
-    tick();
-    const id = setInterval(tick, 500);
-    return () => clearInterval(id);
+    
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
   }, [startTime, totalTime, onTimeout]);
 
   const pct      = (timeLeft / totalTime) * 100;
@@ -126,7 +132,7 @@ function HintBar({ hint, round, maxRounds }) {
 }
 
 // ─── On-screen guess keyboard (Blue Drawize-style) ──────────────────────────
-function GuessKeyboard({ roomId, userId, playerName, room }) {
+function GuessKeyboard({ roomId, userId, playerName, room, engine }) {
   const [typed, setTyped]   = useState('');
   const [flash, setFlash]   = useState(null); // 'correct' | 'wrong' | null
   const hasGuessed          = !!room?.guessedPlayers?.[userId];
@@ -148,6 +154,14 @@ function GuessKeyboard({ roomId, userId, playerName, room }) {
   const handleSubmit = async () => {
     const text = typed.trim();
     if (!text || flash) return;
+    
+    // Client-side validation: basic length and content check
+    if (text.length < 2) {
+      setFlash('wrong');
+      setTimeout(() => { setFlash(null); setTyped(''); }, 600);
+      return;
+    }
+
     if (!hasGuessed && isPlaying && room?.currentWord) {
       const correct = await submitGuess(roomId, userId, playerName, text, room.currentWord);
       if (correct) {
@@ -155,8 +169,9 @@ function GuessKeyboard({ roomId, userId, playerName, room }) {
         const startMs  = room.roundStartTime?.seconds ? room.roundStartTime.seconds * 1000 : room.roundStartTime;
         const elapsed  = (Date.now() - startMs) / 1000;
         const timeLeft = Math.max(0, room.settings.drawTime - elapsed);
-        const engine   = new DrawingGameEngine(roomId, userId, room);
+        
         await engine.onCorrectGuess(userId, playerName, timeLeft, room.settings.drawTime, room.guessedPlayers || {});
+        
         const nonDrawers  = Object.keys(room.players).filter(id => id !== room.currentDrawer);
         const newGuessers = { ...room.guessedPlayers, [userId]: true };
         if (nonDrawers.every(id => newGuessers[id])) await engine.onAllGuessed(room.currentWord);
@@ -302,8 +317,11 @@ export function DrawingGame() {
 
   useEffect(() => {
     if (room && userId) {
-      engineRef.current = new DrawingGameEngine(roomId, userId, room);
-      engineRef.current.onRoomUpdate(room);
+      if (!engineRef.current) {
+        engineRef.current = new DrawingGameEngine(roomId, userId, room);
+      } else {
+        engineRef.current.onRoomUpdate(room);
+      }
     }
   }, [room, userId, roomId]);
 
@@ -404,6 +422,7 @@ export function DrawingGame() {
           userId={userId}
           playerName={state.me?.name || ''}
           room={room}
+          engine={engineRef.current}
         />
       )}
 

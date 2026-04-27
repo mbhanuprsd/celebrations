@@ -67,11 +67,19 @@ export function useCanvas(roomId, canDraw) {
     const ctx = ctxRef.current;
     const canvas = canvasRef.current;
     if (!ctx || !canvas) return;
+    
+    // Use a temporary canvas or offscreen buffer for complex scenes, 
+    // but for this scale, a direct clear and redraw is efficient.
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw committed strokes
     committedStrokesRef.current.forEach(s => drawStroke(ctx, s));
+    
     // Draw live (in-progress) stroke from the remote drawer on top
-    if (liveStrokeRef.current) drawStroke(ctx, liveStrokeRef.current);
+    if (liveStrokeRef.current) {
+      drawStroke(ctx, liveStrokeRef.current);
+    }
   }, [drawStroke]);
 
   // ── Firebase listeners (for non-drawers) ─────────────────────────────────
@@ -79,23 +87,27 @@ export function useCanvas(roomId, canDraw) {
     if (!roomId) return;
     const unsub = listenCanvas(
       roomId,
-      // committed strokes updated
       (strokes) => {
         committedStrokesRef.current = strokes;
-        if (!canDraw) redrawAll();
+        if (!canDraw) {
+          requestAnimationFrame(redrawAll);
+        }
       },
-      // canvas cleared
       () => {
         committedStrokesRef.current = [];
         liveStrokeRef.current = null;
         const ctx = ctxRef.current;
         const canvas = canvasRef.current;
-        if (ctx && canvas) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+        if (ctx && canvas) { 
+          ctx.fillStyle = '#ffffff'; 
+          ctx.fillRect(0, 0, canvas.width, canvas.height); 
+        }
       },
-      // live stroke (in-progress from remote drawer)
       (live) => {
         liveStrokeRef.current = live;
-        if (!canDraw) redrawAll();
+        if (!canDraw) {
+          requestAnimationFrame(redrawAll);
+        }
       }
     );
     return unsub;
