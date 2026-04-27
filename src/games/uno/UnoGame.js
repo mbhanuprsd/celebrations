@@ -11,6 +11,7 @@ import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI'
 import { playUnoCard, drawUnoCard, resetUnoGame } from './unoFirebaseService';
 import { canPlayCard, getCardLabel, UNO_COLOR_META, PLAYABLE_COLORS } from './unoConstants';
 import { saveGameHistory } from '../../firebase/services';
+import { UnoErrorBoundary } from './ErrorBoundary';
 
 const C = UNO_COLOR_META;
 
@@ -310,134 +311,136 @@ export function UnoGame() {
   const cardGap = 4;
 
   return (
-    <Box sx={{ height:'100dvh', background:'linear-gradient(160deg,#0d2137 0%,#071424 100%)', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative', userSelect:'none' }}>
-      <OfflineBanner online={online} />
+    <UnoErrorBoundary>
+      <Box sx={{ height:'100dvh', background:'linear-gradient(160deg,#0d2137 0%,#071424 100%)', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative', userSelect:'none' }}>
+        <OfflineBanner online={online} />
 
-      {/* Header */}
-      <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', px:1.8, pt:!online?4.5:1.2, pb:0.8, flexShrink:0, transition:'padding 0.3s' }}>
-        <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
-          <Box sx={{ px:1.3, py:0.35, borderRadius:'9px', background:'linear-gradient(135deg,#dc2626,#b91c1c)', boxShadow:'0 3px 12px rgba(220,38,38,0.5)' }}>
-            <Typography sx={{ fontWeight:900, fontSize:'1rem', color:'white', letterSpacing:'1.5px' }}>UNO</Typography>
-          </Box>
-          {activeColorMeta && (
-            <motion.div animate={{ scale:[1,1.2,1] }} transition={{ repeat:Infinity, duration:1.6 }}>
-              <Box sx={{ width:13, height:13, borderRadius:'50%', bgcolor:activeColorMeta.hex, boxShadow:`0 0 10px ${activeColorMeta.hex}cc`, border:'2px solid rgba(255,255,255,0.3)' }} />
-            </motion.div>
-          )}
-          <Typography sx={{ fontSize:'0.62rem', color:'#334155', fontWeight:700 }}>{u.direction===1?'↻ CW':'↺ CCW'}</Typography>
-        </Box>
-        <Box sx={{ display:'flex', gap:0.8 }}>
-          {isHost && (
-            <Box onClick={handleRematch} sx={{ p:0.6, borderRadius:'9px', cursor:'pointer', color:'#64748b', bgcolor:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', display:'flex' }}>
-              <ReplayIcon sx={{ fontSize:15 }} />
+        {/* Header */}
+        <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', px:1.8, pt:!online?4.5:1.2, pb:0.8, flexShrink:0, transition:'padding 0.3s' }}>
+          <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+            <Box sx={{ px:1.3, py:0.35, borderRadius:'9px', background:'linear-gradient(135deg,#dc2626,#b91c1c)', boxShadow:'0 3px 12px rgba(220,38,38,0.5)' }}>
+              <Typography sx={{ fontWeight:900, fontSize:'1rem', color:'white', letterSpacing:'1.5px' }}>UNO</Typography>
             </Box>
-          )}
-          <Box onClick={requestLeave} sx={{ p:0.6, borderRadius:'9px', cursor:'pointer', color:'#ef4444', bgcolor:'rgba(239,68,68,0.07)', border:'1px solid rgba(239,68,68,0.22)', display:'flex' }}>
-            <ExitToAppIcon sx={{ fontSize:15 }} />
-          </Box>
-        </Box>
-      </Box>
-
-      {/* Table */}
-      <Box sx={{ flex:1, position:'relative', overflow:'hidden' }}>
-        {/* Felt circle */}
-        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-54%)', width:'min(84vw,340px)', aspectRatio:'1', borderRadius:'50%', background:'radial-gradient(ellipse at 35% 30%,#1a5c3a 0%,#0f3d25 55%,#082a18 100%)', border:'3px solid rgba(255,255,255,0.06)', boxShadow:'0 10px 56px rgba(0,0,0,0.8),inset 0 2px 0 rgba(255,255,255,0.05)', zIndex:0 }} />
-
-        {/* Opponents */}
-        {opponents.map((uid, i) => {
-          const pos = posSlots[i] || 'top';
-          const isFinished = (u.rankings?.indexOf(uid) ?? -1) >= 0;
-          const rank = isFinished ? u.rankings.indexOf(uid) + 1 : null;
-          const posStyles = {
-            top:      { position:'absolute', top:4,   left:'50%',  transform:'translateX(-50%)' },
-            right:    { position:'absolute', right:6,  top:'50%',   transform:'translateY(-60%)' },
-            left:     { position:'absolute', left:6,   top:'50%',   transform:'translateY(-60%)' },
-            topRight: { position:'absolute', top:4,    right:'14%' },
-            topLeft:  { position:'absolute', top:4,    left:'14%'  },
-          }[pos];
-          return (
-            <Box key={uid} sx={{ zIndex:10, ...posStyles }}>
-              <OpponentSlot uid={uid} cardCount={u.hands?.[uid]?.length||0} position={pos}
-                isCurrentTurn={u.playerOrder[u.currentIndex]===uid}
-                player={room.players?.[uid]} rank={rank} isFinished={isFinished} />
-            </Box>
-          );
-        })}
-
-        {/* Center piles */}
-        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-54%)', display:'flex', alignItems:'center', justifyContent:'center', gap:'22px', zIndex:5 }}>
-          {/* Draw pile */}
-          <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', gap:0.7 }}>
-            <Box sx={{ position:'relative' }}>
-              <Box sx={{ position:'absolute', top:4, left:4, width:54, height:80, borderRadius:'9px', bgcolor:'#120840', opacity:0.55 }} />
-              <Box sx={{ position:'absolute', top:2, left:2, width:54, height:80, borderRadius:'9px', bgcolor:'#1a0d52', opacity:0.7 }} />
-              <CardBack size="md" onClick={handleDraw} disabled={!canDrawCard||busy} />
-              <Box sx={{ position:'absolute', top:-8, right:-8, width:22, height:22, borderRadius:'50%', bgcolor:'#6d28d9', border:'2px solid #0d1a2e', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10 }}>
-                <Typography sx={{ fontSize:'0.52rem', fontWeight:900, color:'#fff' }}>{u.deck?.length||0}</Typography>
-              </Box>
-            </Box>
-            <Typography sx={{ fontSize:'0.56rem', color:'rgba(255,255,255,0.28)', fontWeight:800, letterSpacing:'1px' }}>DRAW</Typography>
-          </Box>
-          {/* Discard pile */}
-          <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', gap:0.7 }}>
-            <AnimatePresence mode="popLayout">
-              <motion.div key={u.topCard?.id} initial={{ scale:0.45, rotate:-20, opacity:0, y:-40 }} animate={{ scale:1, rotate:0, opacity:1, y:0 }} exit={{ scale:0.75, opacity:0, y:28 }} transition={{ type:'spring', stiffness:310, damping:22 }}>
-                <UnoCard card={u.topCard} playable={false} size="md" highlighted />
+            {activeColorMeta && (
+              <motion.div animate={{ scale:[1,1.2,1] }} transition={{ repeat:Infinity, duration:1.6 }}>
+                <Box sx={{ width:13, height:13, borderRadius:'50%', bgcolor:activeColorMeta.hex, boxShadow:`0 0 10px ${activeColorMeta.hex}cc`, border:'2px solid rgba(255,255,255,0.3)' }} />
               </motion.div>
-            </AnimatePresence>
-            <Typography sx={{ fontSize:'0.56rem', color:'rgba(255,255,255,0.28)', fontWeight:800, letterSpacing:'1px' }}>DISCARD</Typography>
+            )}
+            <Typography sx={{ fontSize:'0.62rem', color:'#334155', fontWeight:700 }}>{u.direction===1?'↻ CW':'↺ CCW'}</Typography>
+          </Box>
+          <Box sx={{ display:'flex', gap:0.8 }}>
+            {isHost && (
+              <Box onClick={handleRematch} sx={{ p:0.6, borderRadius:'9px', cursor:'pointer', color:'#64748b', bgcolor:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', display:'flex' }}>
+                <ReplayIcon sx={{ fontSize:15 }} />
+              </Box>
+            )}
+            <Box onClick={requestLeave} sx={{ p:0.6, borderRadius:'9px', cursor:'pointer', color:'#ef4444', bgcolor:'rgba(239,68,68,0.07)', border:'1px solid rgba(239,68,68,0.22)', display:'flex' }}>
+              <ExitToAppIcon sx={{ fontSize:15 }} />
+            </Box>
           </Box>
         </Box>
 
-        {/* Turn pill */}
-        <Box sx={{ position:'absolute', bottom:6, left:0, right:0, display:'flex', justifyContent:'center', zIndex:5 }}>
-          <AnimatePresence mode="wait">
-            <motion.div key={turnMsg} initial={{ opacity:0, y:8, scale:0.94 }} animate={{ opacity:1, y:0, scale:1 }} exit={{ opacity:0, y:-6, scale:0.94 }} transition={{ duration:0.18 }}>
-              <Box sx={{ px:2.5, py:0.65, borderRadius:'20px', bgcolor:isMyTurn&&!myFinished?'rgba(124,58,237,0.88)':'rgba(10,20,36,0.85)', border:`1px solid ${isMyTurn&&!myFinished?'rgba(167,139,250,0.5)':'rgba(255,255,255,0.07)'}`, boxShadow:isMyTurn&&!myFinished?'0 6px 22px rgba(124,58,237,0.45)':'0 2px 10px rgba(0,0,0,0.5)', backdropFilter:'blur(10px)' }}>
-                <Typography sx={{ fontSize:'0.75rem', fontWeight:900, color:isMyTurn&&!myFinished?'#fff':'#64748b' }}>{turnMsg}</Typography>
-              </Box>
-            </motion.div>
-          </AnimatePresence>
-        </Box>
-      </Box>
+        {/* Table */}
+        <Box sx={{ flex:1, position:'relative', overflow:'hidden' }}>
+          {/* Felt circle */}
+          <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-54%)', width:'min(84vw,340px)', aspectRatio:'1', borderRadius:'50%', background:'radial-gradient(ellipse at 35% 30%,#1a5c3a 0%,#0f3d25 55%,#082a18 100%)', border:'3px solid rgba(255,255,255,0.06)', boxShadow:'0 10px 56px rgba(0,0,0,0.8),inset 0 2px 0 rgba(255,255,255,0.05)', zIndex:0 }} />
 
-      {/* My area */}
-      <Box sx={{ flexShrink:0, background:'linear-gradient(0deg,#04080f 0%,transparent 100%)', pb:'env(safe-area-inset-bottom,12px)', pt:0.5 }}>
-        <PendingAlert pendingDraw={pendingDraw} pendingDrawType={pendingDrawType} isMyTurn={isMyTurn} />
-        {/* Info bar */}
-        <Box sx={{ px:2, mb:0.5, display:'flex', alignItems:'center', gap:0.8 }}>
-          <Avatar sx={{ width:22, height:22, bgcolor:'#7c3aed', fontSize:'0.58rem', fontWeight:900 }}>
-            {state.playerName?.charAt(0)?.toUpperCase()}
-          </Avatar>
-          <Typography sx={{ fontSize:'0.67rem', color:'#334155', fontWeight:800 }}>{state.playerName}</Typography>
-          <Box sx={{ flex:1 }} />
-          <Typography sx={{ fontSize:'0.6rem', color:'#1e3a5f', fontWeight:700 }}>{myHand.length} card{myHand.length!==1?'s':''}</Typography>
-          {myHand.length===1&&!myFinished&&(
-            <motion.div animate={{ scale:[1,1.14,1] }} transition={{ repeat:Infinity, duration:0.75 }}>
-              <Box sx={{ px:0.8, py:0.15, borderRadius:'8px', bgcolor:'rgba(239,68,68,0.22)', border:'1px solid rgba(239,68,68,0.45)' }}>
-                <Typography sx={{ fontSize:'0.6rem', fontWeight:900, color:'#f87171' }}>UNO!</Typography>
-              </Box>
-            </motion.div>
-          )}
-        </Box>
-        {/* Hand */}
-        <Box sx={{ display:'flex', flexWrap:'wrap', gap:`${cardGap}px`, px:1.8, pb:1.5, overflow:'hidden', alignItems:'center', justifyContent:'center', minHeight:96 }}>
-          {myHand.map((card, i) => {
-            const isPlayable = playableIds.has(card.id) && !busy && isMyTurn;
+          {/* Opponents */}
+          {opponents.map((uid, i) => {
+            const pos = posSlots[i] || 'top';
+            const isFinished = (u.rankings?.indexOf(uid) ?? -1) >= 0;
+            const rank = isFinished ? u.rankings.indexOf(uid) + 1 : null;
+            const posStyles = {
+              top:      { position:'absolute', top:4,   left:'50%',  transform:'translateX(-50%)' },
+              right:    { position:'absolute', right:6,  top:'50%',   transform:'translateY(-60%)' },
+              left:     { position:'absolute', left:6,   top:'50%',   transform:'translateY(-60%)' },
+              topRight: { position:'absolute', top:4,    right:'14%' },
+              topLeft:  { position:'absolute', top:4,    left:'14%'  },
+            }[pos];
             return (
-              <motion.div key={card.id} initial={{ y:50, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:i*0.025, type:'spring', stiffness:300, damping:24 }} style={{ flexShrink:0 }}>
-                <UnoCard card={card} size="md" playable={isPlayable} onClick={() => handlePlay(card)} />
-              </motion.div>
+              <Box key={uid} sx={{ zIndex:10, ...posStyles }}>
+                <OpponentSlot uid={uid} cardCount={u.hands?.[uid]?.length||0} position={pos}
+                  isCurrentTurn={u.playerOrder[u.currentIndex]===uid}
+                  player={room.players?.[uid]} rank={rank} isFinished={isFinished} />
+              </Box>
             );
           })}
-          {myHand.length===0&&!myFinished&&<Box sx={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}><Typography sx={{ color:'#1e3a5f', fontSize:'0.82rem', fontStyle:'italic' }}>No cards</Typography></Box>}
-          {myFinished&&<Box sx={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}><Typography sx={{ color:'#a78bfa', fontSize:'0.9rem', fontWeight:900 }}>🎉 Finished #{myRank+1}!</Typography></Box>}
-        </Box>
-      </Box>
 
-      <ColorPicker open={!!pendingWild} onPick={handleColorPick} />
-      <AnimatePresence>{gameOver&&<GameOverScreen rankings={u.rankings||[]} players={room.players} onRematch={handleRematch} isHost={isHost} onExit={handleExit} />}</AnimatePresence>
-      <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
-    </Box>
+          {/* Center piles */}
+          <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-54%)', display:'flex', alignItems:'center', justifyContent:'center', gap:'22px', zIndex:5 }}>
+            {/* Draw pile */}
+            <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', gap:0.7 }}>
+              <Box sx={{ position:'relative' }}>
+                <Box sx={{ position:'absolute', top:4, left:4, width:54, height:80, borderRadius:'9px', bgcolor:'#120840', opacity:0.55 }} />
+                <Box sx={{ position:'absolute', top:2, left:2, width:54, height:80, borderRadius:'9px', bgcolor:'#1a0d52', opacity:0.7 }} />
+                <CardBack size="md" onClick={handleDraw} disabled={!canDrawCard||busy} />
+                <Box sx={{ position:'absolute', top:-8, right:-8, width:22, height:22, borderRadius:'50%', bgcolor:'#6d28d9', border:'2px solid #0d1a2e', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10 }}>
+                  <Typography sx={{ fontSize:'0.52rem', fontWeight:900, color:'#fff' }}>{u.deck?.length||0}</Typography>
+                </Box>
+              </Box>
+              <Typography sx={{ fontSize:'0.56rem', color:'rgba(255,255,255,0.28)', fontWeight:800, letterSpacing:'1px' }}>DRAW</Typography>
+            </Box>
+            {/* Discard pile */}
+            <Box sx={{ display:'flex', flexDirection:'column', alignItems:'center', gap:0.7 }}>
+              <AnimatePresence mode="popLayout">
+                <motion.div key={u.topCard?.id} initial={{ scale:0.45, rotate:-20, opacity:0, y:-40 }} animate={{ scale:1, rotate:0, opacity:1, y:0 }} exit={{ scale:0.75, opacity:0, y:28 }} transition={{ type:'spring', stiffness:310, damping:22 }}>
+                  <UnoCard card={u.topCard} playable={false} size="md" highlighted />
+                </motion.div>
+              </AnimatePresence>
+              <Typography sx={{ fontSize:'0.56rem', color:'rgba(255,255,255,0.28)', fontWeight:800, letterSpacing:'1px' }}>DISCARD</Typography>
+            </Box>
+          </Box>
+
+          {/* Turn pill */}
+          <Box sx={{ position:'absolute', bottom:6, left:0, right:0, display:'flex', justifyContent:'center', zIndex:5 }}>
+            <AnimatePresence mode="wait">
+              <motion.div key={turnMsg} initial={{ opacity:0, y:8, scale:0.94 }} animate={{ opacity:1, y:0, scale:1 }} exit={{ opacity:0, y:-6, scale:0.94 }} transition={{ duration:0.18 }}>
+                <Box sx={{ px:2.5, py:0.65, borderRadius:'20px', bgcolor:isMyTurn&&!myFinished?'rgba(124,58,237,0.88)':'rgba(10,20,36,0.85)', border:`1px solid ${isMyTurn&&!myFinished?'rgba(167,139,250,0.5)':'rgba(255,255,255,0.07)'}`, boxShadow:isMyTurn&&!myFinished?'0 6px 22px rgba(124,58,237,0.45)':'0 2px 10px rgba(0,0,0,0.5)', backdropFilter:'blur(10px)' }}>
+                  <Typography sx={{ fontSize:'0.75rem', fontWeight:900, color:isMyTurn&&!myFinished?'#fff':'#64748b' }}>{turnMsg}</Typography>
+                </Box>
+              </motion.div>
+            </AnimatePresence>
+          </Box>
+        </Box>
+
+        {/* My area */}
+        <Box sx={{ flexShrink:0, background:'linear-gradient(0deg,#04080f 0%,transparent 100%)', pb:'env(safe-area-inset-bottom,12px)', pt:0.5 }}>
+          <PendingAlert pendingDraw={pendingDraw} pendingDrawType={pendingDrawType} isMyTurn={isMyTurn} />
+          {/* Info bar */}
+          <Box sx={{ px:2, mb:0.5, display:'flex', alignItems:'center', gap:0.8 }}>
+            <Avatar sx={{ width:22, height:22, bgcolor:'#7c3aed', fontSize:'0.58rem', fontWeight:900 }}>
+              {state.playerName?.charAt(0)?.toUpperCase()}
+            </Avatar>
+            <Typography sx={{ fontSize:'0.67rem', color:'#334155', fontWeight:800 }}>{state.playerName}</Typography>
+            <Box sx={{ flex:1 }} />
+            <Typography sx={{ fontSize:'0.6rem', color:'#1e3a5f', fontWeight:700 }}>{myHand.length} card{myHand.length!==1?'s':''}</Typography>
+            {myHand.length===1&&!myFinished&&(
+              <motion.div animate={{ scale:[1,1.14,1] }} transition={{ repeat:Infinity, duration:0.75 }}>
+                <Box sx={{ px:0.8, py:0.15, borderRadius:'8px', bgcolor:'rgba(239,68,68,0.22)', border:'1px solid rgba(239,68,68,0.45)' }}>
+                  <Typography sx={{ fontSize:'0.6rem', fontWeight:900, color:'#f87171' }}>UNO!</Typography>
+                </Box>
+              </motion.div>
+            )}
+          </Box>
+          {/* Hand */}
+          <Box sx={{ display:'flex', flexWrap:'wrap', gap:`${cardGap}px`, px:1.8, pb:1.5, overflow:'hidden', alignItems:'center', justifyContent:'center', minHeight:96 }}>
+            {myHand.map((card, i) => {
+              const isPlayable = playableIds.has(card.id) && !busy && isMyTurn;
+              return (
+                <motion.div key={card.id} initial={{ y:50, opacity:0 }} animate={{ y:0, opacity:1 }} transition={{ delay:i*0.025, type:'spring', stiffness:300, damping:24 }} style={{ flexShrink:0 }}>
+                  <UnoCard card={card} size="md" playable={isPlayable} onClick={() => handlePlay(card)} />
+                </motion.div>
+              );
+            })}
+            {myHand.length===0&&!myFinished&&<Box sx={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}><Typography sx={{ color:'#1e3a5f', fontSize:'0.82rem', fontStyle:'italic' }}>No cards</Typography></Box>}
+            {myFinished&&<Box sx={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}><Typography sx={{ color:'#a78bfa', fontSize:'0.9rem', fontWeight:900 }}>🎉 Finished #{myRank+1}!</Typography></Box>}
+          </Box>
+        </Box>
+
+        <ColorPicker open={!!pendingWild} onPick={handleColorPick} />
+        <AnimatePresence>{gameOver&&<GameOverScreen rankings={u.rankings||[]} players={room.players} onRematch={handleRematch} isHost={isHost} onExit={handleExit} />}</AnimatePresence>
+        <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
+      </Box>
+    </UnoErrorBoundary>
   );
 }

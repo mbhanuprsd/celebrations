@@ -1,4 +1,14 @@
 // src/games/uno/unoConstants.js
+// UNO Game Implementation (Ocho/Plato style)
+//
+// HOUSE RULES IN USE:
+// - Draw stacking: Players can stack +2 on +2 or +4 on +4 to extend the penalty chain
+// - Only matching draw types stack (cannot mix +2 and +4)
+// - Final player in chain must draw the accumulated total
+//
+// DIFFERENCES FROM STANDARD UNO:
+// - Standard UNO doesn't allow stacking at all; all penalties are immediate
+// - This implementation uses the "stacking house rule" variant for more interactive gameplay
 
 export const UNO_COLOR_META = {
   red:    { hex: '#E53935', dark: '#B71C1C', name: 'Red',    emoji: '🔴' },
@@ -42,11 +52,20 @@ export function shuffleArray(arr) {
 }
 
 /**
- * canPlayCard — strict UNO rules with pending-draw stacking
+ * canPlayCard — UNO rules with draw-stacking house rule
  *
- * pendingDraw > 0 means a +2 or +4 chain is in progress.
- * Only the SAME type can extend the chain; everything else is blocked.
- * Player MUST draw (via draw button) to absorb the penalty.
+ * STACKING MECHANIC (House Rule):
+ * When pendingDraw > 0, a draw-card chain is active. Players can ONLY play:
+ * - If pendingDrawType === 'draw2': another Draw2 (accumulates to pendingDraw + 2)
+ * - If pendingDrawType === 'wild4': another Wild+4 (accumulates to pendingDraw + 4)
+ * - Cannot mix types; +2 chain blocks +4 and vice versa
+ * - Other plays are blocked; player MUST draw via draw button
+ *
+ * STANDARD MODE (No pending):
+ * - Wild/Wild4: Always playable
+ * - Color match: Play card same color as active color
+ * - Number match: Play card with same number value
+ * - Action match: Play matching action card type (Skip, Reverse, Draw2)
  */
 export function canPlayCard(card, topCard, activeColor, pendingDraw = 0, pendingDrawType = null) {
   if (pendingDraw > 0) {

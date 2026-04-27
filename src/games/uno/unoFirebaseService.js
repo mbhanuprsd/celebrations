@@ -1,7 +1,7 @@
 // src/games/uno/unoFirebaseService.js
 import { doc, runTransaction, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { buildDeck, shuffleArray, canPlayCard, nextIndex } from './unoConstants';
+import { buildDeck, shuffleArray, canPlayCard, nextIndex, PLAYABLE_COLORS } from './unoConstants';
 import { sendSystemMessage, safeUpdateDoc } from '../../firebase/services';
 
 const HAND_SIZE = 7;
@@ -108,6 +108,9 @@ export async function playUnoCard(roomId, userId, cardId, chosenColor = null) {
     }
     if ((card.type === 'wild' || card.type === 'wild4') && !chosenColor) {
       result = { error: 'Choose a color first' }; return;
+    }
+    if (chosenColor && !PLAYABLE_COLORS.includes(chosenColor)) {
+      result = { error: 'Invalid color choice' }; return;
     }
 
     const count           = u.playerOrder.length;
