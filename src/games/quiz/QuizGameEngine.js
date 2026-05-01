@@ -1,7 +1,7 @@
 // src/games/quiz/QuizGameEngine.js
 import { GameEngine } from '../../core/GameEngine';
 import { initQuizGame } from './quizFirebaseService';
-import { generateQuizQuestions } from './quizGeminiService';
+import { generateQuizQuestions } from './quizGroqService';
 import { QUIZ_SETTINGS } from './quizConstants';
 
 export class QuizGameEngine extends GameEngine {
@@ -27,7 +27,7 @@ export class QuizGameEngine extends GameEngine {
     if (!questions?.length) {
       // Fallback: generate now (e.g. if lobby pre-gen failed or was skipped)
       console.info('No pre-generated questions found — generating now…');
-      const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+      const apiKey = process.env.REACT_APP_GROQ_API_KEY;
       questions = await generateQuizQuestions(topic, count, apiKey);
     } else {
       console.info(`✅ Using ${questions.length} pre-generated questions from lobby.`);

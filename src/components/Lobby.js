@@ -22,7 +22,7 @@ import { UnoGameEngine } from '../games/uno/UnoGameEngine';
 import { MiniGolfGameEngine } from '../games/minigolf/MiniGolfGameEngine';
 import { QuizGameEngine } from '../games/quiz/QuizGameEngine';
 import { GAME_META } from '../core/GameEngine';
-import { generateQuizQuestions } from '../games/quiz/quizGeminiService';
+import { generateQuizQuestions } from '../games/quiz/quizGroqService';
 import { safeUpdateDoc } from '../firebase/services';
 import { doc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -123,11 +123,11 @@ export function Lobby() {
       try {
         const topic  = room.settings?.topic || 'General Knowledge';
         const count  = room.settings?.questionCount || 8;
-        const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+        const apiKey = process.env.REACT_APP_GROQ_API_KEY;
 
         const questions = await generateQuizQuestions(topic, count, apiKey);
 
-        // Detect whether Gemini or fallback was used (Gemini questions won't have _source)
+        // Detect whether Groq or fallback was used (Groq questions won't have _source)
         const isFallback = !apiKey || questions._source === 'fallback';
 
         // Store questions in room so all players + Start Game can access them instantly

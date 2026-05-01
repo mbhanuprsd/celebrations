@@ -17,7 +17,7 @@ import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI'
 import {
   submitQuizAnswer, revealQuizAnswer, advanceQuizQuestion, resetQuizGame,
 } from './quizFirebaseService';
-import { generateQuizQuestions } from './quizGeminiService';
+import { generateQuizQuestions } from './quizGroqService';
 import {
   OPTION_LABELS, OPTION_COLORS, QUIZ_SETTINGS, TOPIC_MAP,
 } from './quizConstants';
@@ -322,7 +322,7 @@ export function QuizGame() {
     try {
       // FIX: notify all players that new questions are being generated
       await sendSystemMessage(roomId, '⏳ Host is generating new questions…');
-      const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+      const apiKey = process.env.REACT_APP_GROQ_API_KEY;
       const questions = await generateQuizQuestions(
         q.topic, QUIZ_SETTINGS.questionCount, apiKey
       );

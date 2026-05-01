@@ -49,8 +49,8 @@ const GAME_GRADIENTS = {
 const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0', uno: '#a855f7' };
 const RANK_MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
 const NAV_ITEMS = [
-  { id: 'singleplayer', label: 'Solo Zone',      icon: VideogameAssetIcon,  color: '#FF9F1C' },
   { id: 'games',        label: 'The Arena',      icon: CelebrationIcon,     color: '#4CC9F0' },
+  { id: 'singleplayer', label: 'Solo Zone',      icon: VideogameAssetIcon,  color: '#FF9F1C' },
   { id: 'chat',         label: 'Yap Corner',     icon: ForumIcon,           color: '#F72585' },
   { id: 'profile',      label: 'My Alter Ego',   icon: BadgeIcon,           color: '#FFD166' },
   { id: 'help',         label: 'Lost? Read This',icon: AutoFixHighIcon,     color: '#06D6A0' },
@@ -1664,7 +1664,7 @@ export function HomeScreen() {
   const { state, logout, updateUsername } = useGameContext();
   const { playerName, userId } = state;
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState('singleplayer');
+  const [activeSection, setActiveSection] = useState('games');
   const [localError, setLocalError] = useState('');
   const [singlePlayerGame, setSinglePlayerGame] = useState(null);
 
