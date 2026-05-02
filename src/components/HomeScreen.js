@@ -24,6 +24,7 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { RacingGame } from '../games/solo/RacingGame';
 import { TetrisGame } from '../games/solo/TetrisGame';
 import { FlappyBirdGame } from '../games/solo/FlappyBirdGame';
+import { HangmanGame } from '../games/solo/HangmanGame';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
@@ -1580,6 +1581,14 @@ const SINGLE_PLAYER_GAMES = [
     color: '#06D6A0',
     gradient: 'linear-gradient(135deg, #06D6A0 0%, #4CC9F0 100%)',
   },
+  {
+    id: 'hangman',
+    label: 'Hangman',
+    icon: '🪢',
+    description: 'Guess the word before the hangman is complete!',
+    color: '#c77dff',
+    gradient: 'linear-gradient(135deg, #c77dff 0%, #7209B7 100%)',
+  },
 ];
 
 function SinglePlayerPanel({ onLaunch, userId }) {
@@ -1785,6 +1794,9 @@ export function HomeScreen() {
       )}
       {singlePlayerGame === 'flappy' && (
         <FlappyBirdGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
+      )}
+      {singlePlayerGame === 'hangman' && (
+        <HangmanGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
       )}
     </Box>
   );
