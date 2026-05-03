@@ -14,6 +14,7 @@ import {
   HOLES, BALL_COLORS, stepBall,
 } from './minigolfConstants';
 import { endShot, fireShot, resetMiniGolfGame, skipTurn } from './minigolfFirebaseService';
+import { useBotTurns } from '../../games/bots/UseBotTurns';
 
 // ─── Drawing helpers ───────────────────────────────────────────────────────
 const WALL_COLOR = '#5d4037';
@@ -271,6 +272,8 @@ export function MiniGolfGame() {
   const { leave } = useRoom();
   const { room, userId, roomId } = state;
   const u = room?.miniGolfState;
+  const isHost = room?.hostId === userId;
+  useBotTurns({ room, roomId, isHost, gameType: 'minigolf' });
 
   const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({
     roomId, userId, gameType: 'minigolf', leaveCallback: leave,

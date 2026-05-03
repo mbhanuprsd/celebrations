@@ -22,6 +22,7 @@ import {
   OPTION_LABELS, OPTION_COLORS, QUIZ_SETTINGS, TOPIC_MAP,
 } from './quizConstants';
 import { sendSystemMessage } from '../../firebase/services';
+import { useBotTurns } from '../../games/bots/UseBotTurns';
 
 // ─── Winner overlay ──────────────────────────────────────────────────────
 function WinnerOverlay({ q, room, isHost, onReset, onLeave, resetting }) {
@@ -218,6 +219,7 @@ export function QuizGame() {
   const { state, notify } = useGameContext();
   const { leave } = useRoom();
   const { room, userId, roomId, isHost } = state;
+  useBotTurns({ room, roomId, isHost, gameType: 'quiz' });
   const q = room?.quizState;
 
   const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({

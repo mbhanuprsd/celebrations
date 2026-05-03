@@ -12,6 +12,7 @@ import { playUnoCard, drawUnoCard, resetUnoGame } from './unoFirebaseService';
 import { canPlayCard, getCardLabel, UNO_COLOR_META, PLAYABLE_COLORS } from './unoConstants';
 import { saveGameHistory } from '../../firebase/services';
 import { UnoErrorBoundary } from './ErrorBoundary';
+import { useBotTurns } from '../../games/bots/UseBotTurns';
 
 const C = UNO_COLOR_META;
 
@@ -208,6 +209,8 @@ export function UnoGame() {
   const { state } = useGameContext();
   const { leave } = useRoom();
   const { room, userId, isHost } = state;
+  const roomId = state.roomId;
+  useBotTurns({ room, roomId, isHost, gameType: 'uno' });
   const [pendingWild, setPendingWild] = useState(null);
   const [busy, setBusy] = useState(false);
 

@@ -14,6 +14,7 @@ import { LudoDice } from './LudoDice';
 import { rollDice, movePiece, resetLudoGame } from './ludoFirebaseService';
 import { LUDO_COLORS } from './ludoConstants';
 import { saveGameHistory } from '../../firebase/services';
+import { useBotTurns } from '../../games/bots/UseBotTurns';
 
 // ─── Winner overlay ─────────────────────────────────────────────────────────
 function LudoWinnerOverlay({ ls, room, isHost, onReset, onLeave }) {
@@ -232,6 +233,7 @@ export function LudoGame() {
   const { state, notify } = useGameContext();
   const { leave }         = useRoom();
   const { room, userId, roomId, isHost, chat } = state;
+  useBotTurns({ room, roomId, isHost, gameType: 'ludo' });
   const [actionPending, setActionPending] = useState(false);
   const [logOpen, setLogOpen]             = useState(false);
 

@@ -16,6 +16,7 @@ import { SnakeLadderBoard } from './SnakeLadderBoard';
 import { rollSnakeDice, moveSnakePiece, resetSnakeLadderGame } from './snakeLadderFirebaseService';
 import { PLAYER_COLOR_MAP } from './snakeLadderConstants';
 import { saveGameHistory } from '../../firebase/services';
+import { useBotTurns } from '../bots/UseBotTurns';
 
 // ─── Dot patterns for dice ─────────────────────────────────────────────────
 const DOTS = {
@@ -213,6 +214,7 @@ export function SnakeLadderGame() {
   const myColorId       = colorMap[userId];
   const myColor         = PLAYER_COLOR_MAP[myColorId];
   const isHost          = room?.hostId === userId;
+  useBotTurns({ room, roomId, isHost, gameType: 'snakeladder' });
   const myPos           = positions[userId] || 0;
   const alreadyFinished = rankings.includes(userId);
   const currentTurnColor = PLAYER_COLOR_MAP[colorMap[currentPlayerId]];
