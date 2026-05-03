@@ -10,7 +10,7 @@ export async function initMiniGolfGame(roomId, playerOrder) {
   const scores = {};
 
   playerOrder.forEach((uid, i) => {
-    balls[uid]  = { x: hole.start.x, y: hole.start.y + i * 12, strokes: 0 };
+    balls[uid]  = { x: hole.start.x, y: hole.start.y + i * 20, strokes: 0 };
     scores[uid] = [];
   });
 
@@ -24,12 +24,23 @@ export async function initMiniGolfGame(roomId, playerOrder) {
       scores,
       holeFinished: [],
       winner: null,
+      pendingShot: null,  // broadcast shot vector so all clients animate together
     },
   });
   await sendSystemMessage(roomId, '⛳ Mini Golf started! Lowest total strokes wins.');
 }
 
-// FIX: wrapped in runTransaction to prevent duplicate shot submissions from double-tap / retry
+// Write the shot vector to Firestore so every client can run physics and show the ball moving.
+// A random shotId prevents re-triggering on the same update.
+export async function fireShot(roomId, uid, fromX, fromY, angle, power, strokes) {
+  const shotId = Math.random().toString(36).slice(2, 9);
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
+    'miniGolfState.pendingShot': { uid, fromX, fromY, angle, power, strokes, shotId },
+  });
+}
+
+// Called only by the shooter once physics finish on their device.
+// Clears pendingShot and commits the final ball position + turn advance.
 export async function endShot(roomId, userId, newX, newY, strokes, sunk) {
   let postMsgs = [];
 
@@ -65,7 +76,7 @@ export async function endShot(roomId, userId, newX, newY, strokes, sunk) {
     do {
       nextIdx = (nextIdx + 1) % count;
       loops++;
-    } while (holeFinished.includes(playerOrder[nextIdx]) && loops <= count);
+    } while (holeFinished.includes(playerOrder[nextIdx]) && loops < count);
 
     const allDone = playerOrder.every(uid => holeFinished.includes(uid));
 
@@ -73,12 +84,16 @@ export async function endShot(roomId, userId, newX, newY, strokes, sunk) {
       const nextHole = currentHoleIdx + 1;
 
       if (nextHole >= HOLES.length) {
+        // Game over — find winner
         let minTotal = Infinity;
         let winnerUid = playerOrder[0];
         for (const uid of playerOrder) {
           const total = (scores[uid] || []).reduce((s, v) => s + v, 0);
           if (total < minTotal) { minTotal = total; winnerUid = uid; }
         }
+        const tiedUids = playerOrder.filter(uid =>
+          (scores[uid] || []).reduce((s, v) => s + v, 0) === minTotal
+        );
         winner = winnerUid;
         tx.update(doc(db, 'rooms', roomId), {
           'miniGolfState.balls':        balls,
@@ -86,34 +101,43 @@ export async function endShot(roomId, userId, newX, newY, strokes, sunk) {
           'miniGolfState.holeFinished': holeFinished,
           'miniGolfState.winner':       winner,
           'miniGolfState.currentIndex': 0,
+          'miniGolfState.pendingShot':  null,
         });
-        const winnerName = data.players?.[winnerUid]?.name || 'Someone';
-        postMsgs.push(`🏆 ${winnerName} wins with ${minTotal} strokes!`);
+        if (tiedUids.length > 1) {
+          const tiedNames = tiedUids.map(uid => data.players?.[uid]?.name || uid).join(' & ');
+          postMsgs.push(`🤝 Tie! ${tiedNames} both finished with ${minTotal} strokes! ${data.players?.[winnerUid]?.name || winnerUid} wins by turn order.`);
+        } else {
+          const winnerName = data.players?.[winnerUid]?.name || 'Someone';
+          postMsgs.push(`🏆 ${winnerName} wins with ${minTotal} strokes!`);
+        }
         return;
       }
 
+      // Advance to next hole
       const nextHoleData = HOLES[nextHole];
       const resetBalls   = {};
       playerOrder.forEach((uid, i) => {
-        resetBalls[uid] = { x: nextHoleData.start.x, y: nextHoleData.start.y + i * 12, strokes: 0 };
+        resetBalls[uid] = { x: nextHoleData.start.x, y: nextHoleData.start.y + i * 20, strokes: 0 };
       });
-
       tx.update(doc(db, 'rooms', roomId), {
         'miniGolfState.currentHoleIdx': nextHole,
         'miniGolfState.currentIndex':   0,
         'miniGolfState.holeFinished':   [],
         'miniGolfState.balls':          resetBalls,
         'miniGolfState.scores':         scores,
+        'miniGolfState.pendingShot':    null,
       });
       postMsgs.push(`⛳ Hole ${nextHole + 1}: ${HOLES[nextHole].name}`);
       return;
     }
 
+    // Normal turn advance
     tx.update(doc(db, 'rooms', roomId), {
       'miniGolfState.balls':        balls,
       'miniGolfState.scores':       scores,
       'miniGolfState.holeFinished': holeFinished,
       'miniGolfState.currentIndex': nextIdx,
+      'miniGolfState.pendingShot':  null,
     });
   });
 
@@ -122,4 +146,27 @@ export async function endShot(roomId, userId, newX, newY, strokes, sunk) {
 
 export async function resetMiniGolfGame(roomId, playerOrder) {
   await initMiniGolfGame(roomId, playerOrder);
+}
+
+export async function skipTurn(roomId) {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(doc(db, 'rooms', roomId));
+    const u = snap.data()?.miniGolfState;
+    if (!u?.playerOrder) return;
+
+    const { playerOrder, currentIndex, holeFinished } = u;
+    const count = playerOrder.length;
+    let nextIdx = currentIndex;
+    let loops = 0;
+    do {
+      nextIdx = (nextIdx + 1) % count;
+      loops++;
+    } while (holeFinished.includes(playerOrder[nextIdx]) && loops < count);
+
+    tx.update(doc(db, 'rooms', roomId), {
+      'miniGolfState.currentIndex': nextIdx,
+      'miniGolfState.pendingShot':  null,
+    });
+  });
+  await sendSystemMessage(roomId, '⏭️ Host skipped a disconnected player\'s turn.').catch(console.error);
 }
