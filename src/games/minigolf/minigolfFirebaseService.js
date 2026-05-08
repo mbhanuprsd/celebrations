@@ -31,11 +31,26 @@ export async function initMiniGolfGame(roomId, playerOrder) {
 }
 
 // Write the shot vector to Firestore so every client can run physics and show the ball moving.
-// A random shotId prevents re-triggering on the same update.
+// Uses a transaction to verify it's still this player's turn before writing,
+// preventing stale bot callbacks from hijacking another player's turn.
 export async function fireShot(roomId, uid, fromX, fromY, angle, power, strokes) {
   const shotId = Math.random().toString(36).slice(2, 9);
-  await safeUpdateDoc(doc(db, 'rooms', roomId), {
-    'miniGolfState.pendingShot': { uid, fromX, fromY, angle, power, strokes, shotId },
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(doc(db, 'rooms', roomId));
+    const mg   = snap.data()?.miniGolfState;
+    if (!mg) return;
+
+    // Abort if it's no longer this player's turn or a shot is already in flight
+    const currentUid = mg.playerOrder?.[mg.currentIndex];
+    if (currentUid !== uid) return;
+    if (mg.pendingShot) return;
+    if (mg.holeFinished?.includes(uid)) return;
+    if (mg.winner) return;
+
+    tx.update(doc(db, 'rooms', roomId), {
+      'miniGolfState.pendingShot': { uid, fromX, fromY, angle, power, strokes, shotId },
+    });
   });
 }
 

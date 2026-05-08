@@ -108,8 +108,20 @@ export function Lobby() {
   const [genStatus, setGenStatus] = useState('idle');  // idle | generating | done | fallback | error
   const [genCount, setGenCount]   = useState(0);
   const genDoneRef = useRef(false);  // prevent double-firing
+  const prevTopicRef = useRef(null);  // track topic changes
+
+  // Reset generation flag when topic changes so fresh questions are generated
+  useEffect(() => {
+    const currentTopic = room?.settings?.topic || 'General Knowledge';
+    if (prevTopicRef.current !== currentTopic) {
+      prevTopicRef.current = currentTopic;
+      genDoneRef.current = false;  // Allow regeneration on topic change
+      setGenStatus('idle');
+    }
+  }, [room?.settings?.topic]);
 
   useEffect(() => {
+
     if (!room || room.gameType !== 'quiz' || !isHost) return;
 
     // Already have questions stored in the room
@@ -150,7 +162,7 @@ export function Lobby() {
     };
 
     generate();
-  }, [room?.gameType, isHost, state.roomId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [room?.gameType, isHost, state.roomId, room?.settings?.topic]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Non-host: sync status from room state
   useEffect(() => {

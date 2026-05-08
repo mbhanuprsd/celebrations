@@ -7,12 +7,12 @@
 //
 import { useEffect, useRef } from 'react';
 import { rollSnakeDice, moveSnakePiece } from '../snakeladder/snakeLadderFirebaseService';
-import { rollDice, movePiece, getMovablePieceIds } from '../ludo/ludoFirebaseService';
+import { rollDice, movePiece } from '../ludo/ludoFirebaseService';
 import { playUnoCard, drawUnoCard } from '../uno/unoFirebaseService';
 import { fireShot } from '../minigolf/minigolfFirebaseService';
 import { submitQuizAnswer } from '../quiz/quizFirebaseService';
 import { HOLES } from '../minigolf/minigolfConstants';
-import { canPlayCard, PLAYABLE_COLORS } from '../uno/unoConstants';
+import { canPlayCard } from '../uno/unoConstants';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,28 +64,59 @@ function pickBestUnoColor(hand) {
 
 export function useBotTurns({ room, roomId, isHost, gameType }) {
   // Track which action keys have already been handled to prevent double-firing
-  const handledRef  = useRef(new Set());
-  const timersRef   = useRef([]);
+  const handledRef = useRef(new Set());
+  const timersRef  = useRef([]);
+  // Always-current room reference so delayed callbacks never read stale closures
+  const roomRef    = useRef(room);
+  useEffect(() => { roomRef.current = room; }, [room]);
+
+  // ── Reset handledRef when the game resets (turnCount/currentIndex goes back to 0)
+  // so bots act normally on rematch without unmounting the component.
+  const resetSignal = [
+    room?.slState?.turnCount     === 0 ? 'sl0'   : null,
+    room?.ludoState?.turnCount   === 0 ? 'lu0'   : null,
+    room?.unoState?.turnCount    === 0 ? 'un0'   : null,
+    room?.miniGolfState?.currentHoleIdx === 0 &&
+    room?.miniGolfState?.currentIndex   === 0 ? 'mg0' : null,
+    room?.quizState?.currentIndex === 0 &&
+    room?.quizState?.phase === 'question' ? 'qz0' : null,
+  ].join('|');
+
+  const prevResetSignalRef = useRef(resetSignal);
+  useEffect(() => {
+    if (prevResetSignalRef.current !== resetSignal) {
+      prevResetSignalRef.current = resetSignal;
+      handledRef.current = new Set();
+    }
+  }, [resetSignal]);
+
+  const quizAnswerKeys = Object.keys(room?.quizState?.answers || {}).join(',');
 
   // Clear scheduled timers on unmount
   useEffect(() => {
     return () => {
       timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
     };
   }, []);
 
   useEffect(() => {
     if (!isHost || !room || !roomId) return;
 
-    const players  = room.players || {};
-    const isBot    = uid => !!players[uid]?.isBot;
+    const players = room.players || {};
+    const isBot   = uid => !!players[uid]?.isBot;
 
+    // Schedule a bot action; prune completed timer IDs to keep array small
     const schedule = (fn, ms = 0) => {
-      const t = setTimeout(() => fn().catch(console.error), ms);
-      timersRef.current.push(t);
+      let id;
+      id = setTimeout(() => {
+        fn().catch(console.error);
+        timersRef.current = timersRef.current.filter(t => t !== id);
+      }, ms);
+      timersRef.current.push(id);
     };
 
-    const handle = (key, fn, ms) => {
+    const handle = (key, fn, ms = 0) => {
       if (handledRef.current.has(key)) return;
       handledRef.current.add(key);
       schedule(fn, ms);
@@ -97,12 +128,23 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
       if (!sl || sl.winner) return;
       const currentUid = sl.playerOrder?.[sl.currentTurnIndex];
       if (!currentUid || !isBot(currentUid)) return;
-      if (sl.diceRolled) return; // already rolled, shouldn't happen
+      if (sl.diceRolled) return;
 
       handle(`sl-${sl.turnCount}-${currentUid}`, async () => {
         await delay(rand(700, 1200));
+        const freshSl = room.slState;
+        if (!freshSl || freshSl.winner) return;
+        const freshUid = freshSl.playerOrder?.[freshSl.currentTurnIndex];
+        if (freshUid !== currentUid || freshSl.diceRolled) return;
+
         await rollSnakeDice(roomId, currentUid);
         await delay(rand(500, 900));
+
+        const freshSlAfter = room.slState;
+        if (!freshSlAfter || freshSlAfter.winner) return;
+        const freshUidAfter = freshSlAfter.playerOrder?.[freshSlAfter.currentTurnIndex];
+        if (freshUidAfter !== currentUid || !freshSlAfter.diceRolled) return;
+
         await moveSnakePiece(roomId, currentUid);
       });
     }
@@ -121,11 +163,19 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
 
       handle(`ludo-${ls.turnCount}-${currentUid}`, async () => {
         await delay(rand(700, 1200));
+        const freshLs = room.ludoState;
+        if (!freshLs || freshLs.winner) return;
+        if (freshLs.currentTurn !== color || freshLs.diceRolled) return;
+
         const result = await rollDice(roomId, currentUid);
         if (result?.movable?.length > 0) {
           await delay(rand(500, 900));
-          const pieces    = ls.pieces[color] || [];
-          const pieceId   = pickLudoPiece(result.movable, pieces);
+          const freshLsAfter = room.ludoState;
+          if (!freshLsAfter || freshLsAfter.winner) return;
+          if (freshLsAfter.currentTurn !== color || !freshLsAfter.diceRolled) return;
+
+          const pieces  = freshLsAfter.pieces?.[color] || ls.pieces[color] || [];
+          const pieceId = pickLudoPiece(result.movable, pieces);
           if (pieceId != null) await movePiece(roomId, currentUid, pieceId);
         }
       });
@@ -140,12 +190,17 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
 
       handle(`uno-${u.turnCount}-${currentUid}`, async () => {
         await delay(rand(900, 1800));
-        const hand     = u.hands?.[currentUid] || [];
+        const freshU = room.unoState;
+        if (!freshU || freshU.winner) return;
+        const freshUid = freshU.playerOrder?.[freshU.currentIndex];
+        if (freshUid !== currentUid) return;
+
+        const hand = freshU.hands?.[currentUid] || [];
         const playable = hand.filter(c =>
-          canPlayCard(c, u.topCard, u.activeColor, u.pendingDraw, u.pendingDrawType));
+          canPlayCard(c, freshU.topCard, freshU.activeColor, freshU.pendingDraw, freshU.pendingDrawType));
 
         if (playable.length > 0) {
-          const card = pickBestUnoCard(playable, u.activeColor);
+          const card = pickBestUnoCard(playable, freshU.activeColor);
           const isWild = card.type === 'wild' || card.type === 'wild4';
           const chosenColor = isWild ? pickBestUnoColor(hand) : null;
           await playUnoCard(roomId, currentUid, card.id, chosenColor);
@@ -172,26 +227,33 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
       handle(shotKey, async () => {
         await delay(rand(1000, 1800));
 
-        // Re-read ball to make sure it hasn't changed (another player went)
-        const currentMg = room.miniGolfState;
-        if (!currentMg || currentMg.pendingShot) return;
-        if (currentMg.playerOrder?.[currentMg.currentIndex] !== currentUid) return;
+        // For minigolf, use current room since effect re-runs on room changes
+        const freshMg = room.miniGolfState;
+        if (!freshMg || freshMg.pendingShot || freshMg.winner) return;
+        if (freshMg.playerOrder?.[freshMg.currentIndex] !== currentUid) return;
+        if (freshMg.holeFinished?.includes(currentUid)) return;
 
-        const holeData = HOLES[mg.currentHoleIdx] || HOLES[0];
+        const freshBall = freshMg.balls?.[currentUid];
+        if (!freshBall) return;
+
+        const holeData = HOLES[freshMg.currentHoleIdx] || HOLES[0];
         const holePos  = holeData.hole;
 
-        // Aim toward hole with ±12° random variance
-        // Note: fireShot stores angle such that vx = -cos(angle)*power
-        // So to shoot TOWARD hole we need angle = atan2(dy,dx) + PI
-        const dx        = holePos.x - ball.x;
-        const dy        = holePos.y - ball.y;
-        const toHole    = Math.atan2(dy, dx);
-        const angle     = toHole + Math.PI + (Math.random() - 0.5) * 0.42; // ±12°
-        const dist      = Math.hypot(dx, dy);
-        const power     = Math.min(22, Math.max(8, dist / 14 + rand(-2, 3)));
-        const newStrokes = ball.strokes + 1;
+        const dx = holePos.x - freshBall.x;
+        const dy = holePos.y - freshBall.y;
+        const dist = Math.hypot(dx, dy);
 
-        await fireShot(roomId, currentUid, ball.x, ball.y, angle, power, newStrokes);
+        // Smarter aiming: less random variation for close shots
+        const baseAngle = Math.atan2(dy, dx) + Math.PI;
+        const angleVariation = dist < 100 ? 0.1 : dist < 200 ? 0.3 : 0.5; // Reduced variation
+        const angle = baseAngle + (Math.random() - 0.5) * angleVariation;
+
+        // Better power calculation: account for friction and target speed
+        // Mini golf balls need about 3-5 units of velocity to reach the hole
+        const targetSpeed = Math.max(3, Math.min(8, dist / 25));
+        const power = Math.min(22, Math.max(5, targetSpeed + rand(-1, 2)));
+
+        await fireShot(roomId, currentUid, freshBall.x, freshBall.y, angle, power, freshBall.strokes + 1);
       });
     }
 
@@ -201,46 +263,47 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
       if (!q || q.phase !== 'question') return;
 
       const answerTime  = room.settings?.answerTime || 20;
-      const currentQ    = q.questions?.[q.currentIndex];
-      const optionCount = currentQ?.options?.length || 4;
+      const questionIdx = q.currentIndex;
+      const optionCount = q.questions?.[questionIdx]?.options?.length || 4;
 
-      // Schedule an answer for each bot that hasn't answered this question yet
       for (const uid of Object.keys(players)) {
         if (!isBot(uid)) continue;
         if (q.answers?.[uid]) continue;
 
-        const key = `quiz-${q.currentIndex}-${uid}`;
+        const key = `quiz-${questionIdx}-${uid}`;
         if (handledRef.current.has(key)) continue;
         handledRef.current.add(key);
 
-        // Answer somewhere between 30–85% of the answer window
         const delayMs = rand(answerTime * 300, answerTime * 850);
-        const t = setTimeout(async () => {
+        let id;
+        id = setTimeout(async () => {
+          timersRef.current = timersRef.current.filter(t => t !== id);
           try {
-            // Check phase is still active before answering
-            const phase = room.quizState?.phase;
-            if (phase !== 'question') return;
-            if (room.quizState?.answers?.[uid]) return;
-            const idx = Math.floor(Math.random() * optionCount);
-            await submitQuizAnswer(roomId, uid, idx);
+            // Read freshest state from room — avoids stale closure
+            const freshQ = room.quizState;
+            if (!freshQ || freshQ.phase !== 'question') return;
+            if (freshQ.currentIndex !== questionIdx) return; // question already moved on
+            if (freshQ.answers?.[uid]) return;
+            await submitQuizAnswer(roomId, uid, Math.floor(Math.random() * optionCount));
           } catch (e) {
             console.error('Bot quiz answer failed:', e);
           }
         }, delayMs);
-        timersRef.current.push(t);
+        timersRef.current.push(id);
       }
     }
 
   }, [
     isHost, roomId, gameType,
-    // Granular deps to avoid re-running on unrelated changes
-    room?.slState?.turnCount, room?.slState?.winner,
-    room?.ludoState?.turnCount, room?.ludoState?.winner,
-    room?.unoState?.turnCount, room?.unoState?.winner,
+    room?.slState?.turnCount,      room?.slState?.winner,
+    room?.slState?.currentTurnIndex, room?.slState?.diceRolled,
+    room?.ludoState?.turnCount,    room?.ludoState?.winner,
+    room?.ludoState?.currentTurn,  room?.ludoState?.diceRolled,
+    room?.unoState?.turnCount,     room?.unoState?.winner,
+    room?.unoState?.currentIndex,
     room?.miniGolfState?.pendingShot, room?.miniGolfState?.currentIndex,
     room?.miniGolfState?.currentHoleIdx, room?.miniGolfState?.winner,
     room?.quizState?.currentIndex, room?.quizState?.phase,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    JSON.stringify(room?.quizState?.answers),
+    quizAnswerKeys,
   ]);
 }

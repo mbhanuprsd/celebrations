@@ -14,7 +14,8 @@ import {
   HOLES, BALL_COLORS, stepBall,
 } from './minigolfConstants';
 import { endShot, fireShot, resetMiniGolfGame, skipTurn } from './minigolfFirebaseService';
-import { useBotTurns } from '../../games/bots/UseBotTurns';
+import { saveGameHistory } from '../../firebase/services';
+import { useBotTurns } from '../bots/useBotTurns';
 
 // ─── Drawing helpers ───────────────────────────────────────────────────────
 const WALL_COLOR = '#5d4037';
@@ -374,14 +375,15 @@ export function MiniGolfGame() {
         setShotMsg('');
       }
 
-      // Only the shooter commits the result to Firebase
-      if (isShooter) {
+      // The shooter OR the host commits the result to Firebase
+      // (host handles bot shots since bots aren't real clients)
+      if (isShooter || isHost) {
         endShot(roomId, uid, ball.x, ball.y, strokes, wasSunk || strokes >= MAX_STROKES)
           .catch(console.error);
       }
     };
     rafRef.current = requestAnimationFrame(tick);
-  }, [holeData, redraw, roomId]);
+  }, [holeData, redraw, roomId, isHost]);
 
   // ── Pointer aim handling ─────────────────────────────────────────────
   const getCanvasXY = (e) => {
@@ -442,7 +444,33 @@ export function MiniGolfGame() {
       .catch(err => { console.error(err); setAnimating(false); });
   };
 
-  // Cleanup RAF on unmount
+  const mgSavedRef = useRef(false);
+  useEffect(() => {
+    if (!u?.winner || !userId || !room || mgSavedRef.current) return;
+    mgSavedRef.current = true;
+    const humanPlayers = (u.playerOrder || []).filter(uid => !room.players?.[uid]?.isBot);
+    const scores       = u.scores || {};
+    const sorted       = [...humanPlayers].sort(
+      (a, b) => (scores[a] || []).reduce((s, v) => s + v, 0) - (scores[b] || []).reduce((s, v) => s + v, 0)
+    );
+    const myRank    = sorted.indexOf(userId) + 1 || humanPlayers.length;
+    const winnerUid = sorted[0];
+    saveGameHistory(userId, {
+      gameType: 'minigolf',
+      roomId,
+      myRank,
+      totalPlayers: humanPlayers.length,
+      winnerName: room.players?.[winnerUid]?.name || '',
+      rankedPlayers: sorted.map((uid, i) => ({
+        name: room.players?.[uid]?.name || uid,
+        score: (scores[uid] || []).reduce((s, v) => s + v, 0),
+        rank: i + 1,
+        isMe: uid === userId,
+      })),
+    });
+  }, [u?.winner]); // eslint-disable-line
+
+  // ── Cleanup RAF on unmount ────────────────────────────────────────────
   useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
   // ── Shared shot animation: fires on every client when pendingShot changes ──

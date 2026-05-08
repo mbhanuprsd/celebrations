@@ -306,8 +306,8 @@ export function HangmanGame({ onExit, userId, playerName }) {
       )}
 
       {/* Alphabet keyboard */}
-      <Box sx={{ px: 1.5, pb: 2, mt: 'auto' }}>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: 'center' }}>
+      <Box sx={{ px: 1, pb: 2, mt: 'auto' }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, justifyContent: 'center' }}>
           {ALPHABET.map(letter => {
             const isGuessed   = guessed.has(letter);
             const isCorrect   = isGuessed && word.includes(letter);
@@ -318,10 +318,10 @@ export function HangmanGame({ onExit, userId, playerName }) {
                 key={letter}
                 onClick={() => !isDisabled && handleGuess(letter)}
                 sx={{
-                  width: 32, height: 32, borderRadius: '8px',
+                  width: 44, height: 44, borderRadius: '10px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   cursor: isDisabled ? 'default' : 'pointer',
-                  fontWeight: 800, fontSize: '0.78rem',
+                  fontWeight: 800, fontSize: '1rem',
                   userSelect: 'none',
                   transition: 'all 0.12s',
                   background: isCorrect
@@ -330,16 +330,18 @@ export function HangmanGame({ onExit, userId, playerName }) {
                     ? 'rgba(239,71,111,0.15)'
                     : 'rgba(255,255,255,0.05)',
                   border: isCorrect
-                    ? `1px solid ${wonColor}60`
+                    ? `1.5px solid ${wonColor}60`
                     : isWrong
-                    ? `1px solid ${lostColor}40`
-                    : '1px solid rgba(255,255,255,0.1)',
+                    ? `1.5px solid ${lostColor}40`
+                    : '1.5px solid rgba(255,255,255,0.2)',
                   color: isCorrect ? wonColor : isWrong ? lostColor + '80' : '#c9d1d9',
+                  opacity: isDisabled ? 0.35 : 1,
                   '&:hover': !isDisabled ? {
-                    background: `${accentColor}20`,
-                    border: `1px solid ${accentColor}60`,
+                    background: `${accentColor}25`,
+                    border: `1.5px solid ${accentColor}70`,
                     color: accentColor,
-                    transform: 'scale(1.08)',
+                    transform: 'scale(1.1)',
+                    boxShadow: `0 0 12px ${accentColor}30`,
                   } : {},
                 }}
               >

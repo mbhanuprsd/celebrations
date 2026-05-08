@@ -29,21 +29,23 @@ export function FinalScores() {
   useEffect(() => {
     if (!userId || !room || savedRef.current) return;
     savedRef.current = true;
-    const myRank = players.findIndex(p => p.id === userId) + 1;
+    const humanPlayers = players.filter(p => !p.isBot);
+    const myRank = humanPlayers.findIndex(p => p.id === userId) + 1;
+    if (!myRank) return; // user not in the list (left early)
     saveGameHistory(userId, {
       gameType: 'drawing',
       roomId: room.id,
       myRank,
-      totalPlayers: players.length,
-      winnerName: winner?.name || '',
-      rankedPlayers: players.map((p, i) => ({
+      totalPlayers: humanPlayers.length,
+      winnerName: humanPlayers[0]?.name || '',
+      rankedPlayers: humanPlayers.map((p, i) => ({
         name: p.name,
         score: p.score || 0,
         rank: i + 1,
         isMe: p.id === userId,
       })),
     });
-  }, [userId, room]); // eslint-disable-line
+  }, [room?.id, userId]); // eslint-disable-line
 
   return (
     <Box sx={{

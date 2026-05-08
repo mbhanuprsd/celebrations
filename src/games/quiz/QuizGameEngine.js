@@ -21,7 +21,7 @@ export class QuizGameEngine extends GameEngine {
     const topic = this.room.settings?.topic || 'General Knowledge';
     const count = this.room.settings?.questionCount || QUIZ_SETTINGS.questionCount;
 
-    // Use pre-generated questions from Lobby if available (instant start)
+    // Use pre-generated questions from Lobby if available (instant start, no extra API call)
     let questions = this.room.quizQuestions;
 
     if (!questions?.length) {
@@ -33,6 +33,7 @@ export class QuizGameEngine extends GameEngine {
       console.info(`✅ Using ${questions.length} pre-generated questions from lobby.`);
     }
 
+    // Initialize the game with the questions
     await initQuizGame(this.roomId, playerOrder, questions, topic);
   }
 }

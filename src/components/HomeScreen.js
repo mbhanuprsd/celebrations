@@ -68,7 +68,11 @@ function timeAgo(ts) {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }
 
 function nameColor(name) {
@@ -1137,16 +1141,9 @@ function GlobalChatPanel({ userId, playerName }) {
 
 // ─── Profile Panel ────────────────────────────────────────────────────────────
 
-function PastGamesSection({ userId, isAnonymous }) {
-  const [games, setGames] = useState([]);
-  const [loading, setLoading] = useState(true);
+function PastGamesSection({ games, loading, isAnonymous }) {
   const [expanded, setExpanded] = useState(false);
   const [openId, setOpenId] = useState(null);
-
-  useEffect(() => {
-    if (!userId || isAnonymous) { setLoading(false); return; }
-    getUserGameHistory(userId, 15).then(data => { setGames(data); setLoading(false); });
-  }, [userId, isAnonymous]);
 
   if (isAnonymous) return <GuestGateMessage feature="Past Games" />;
 
@@ -1168,6 +1165,7 @@ function PastGamesSection({ userId, isAnonymous }) {
     </Box>
   );
 
+  // Show 3 initially; "show more" reveals everything fetched
   const visible = expanded ? games : games.slice(0, 3);
 
   return (
@@ -1288,16 +1286,27 @@ function ProfilePanel({ state, updateUsername, logout }) {
   const [nameInput, setNameInput] = useState('');
   const [nameError, setNameError] = useState('');
   const [nameSaving, setNameSaving] = useState(false);
+  const [games, setGames] = useState([]);
+  const [gamesLoading, setGamesLoading] = useState(true);
   const [stats, setStats] = useState({ played: 0, wins: 0, top3: 0 });
 
+  // Single fetch — shared between stats and PastGamesSection
   useEffect(() => {
-    if (!userId || isAnonymous) return;
-    getUserGameHistory(userId, 50).then(games => {
+    if (!userId || isAnonymous) { setGamesLoading(false); return; }
+    getUserGameHistory(userId, 50).then(data => {
+      setGames(data);
+      // Filter out games where bots inflated the count (totalPlayers includes bots)
+      // A "real" game needs at least 2 human players — we detect this by checking
+      // if rankedPlayers has any non-bot entries beyond yourself (bots have no isBot field
+      // saved in rankedPlayers, but we can use totalPlayers >= 2 as a proxy; bot-only
+      // rooms would still show rank 1 of 1, so we guard on totalPlayers >= 2).
+      const realGames = data.filter(g => (g.totalPlayers || 0) >= 2);
       setStats({
-        played: games.length,
-        wins:   games.filter(g => (g.myRank || g.rank) === 1).length,
-        top3:   games.filter(g => (g.myRank || g.rank) <= 3).length,
+        played: realGames.length,
+        wins:   realGames.filter(g => (g.myRank || g.rank) === 1).length,
+        top3:   realGames.filter(g => (g.myRank || g.rank) <= 3 && (g.myRank || g.rank) > 0).length,
       });
+      setGamesLoading(false);
     });
   }, [userId, isAnonymous]);
 
@@ -1373,7 +1382,7 @@ function ProfilePanel({ state, updateUsername, logout }) {
               </Box>
             )}
             {userEmail && !editingName && (
-              <Typography sx={{ color: '#2a3848', fontSize: '0.6rem', mt: 0.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{userEmail}</Typography>
+              <Typography sx={{ color: '#8b949e', fontSize: '0.6rem', mt: 0.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{userEmail}</Typography>
             )}
           </Box>
         </Box>
@@ -1396,7 +1405,7 @@ function ProfilePanel({ state, updateUsername, logout }) {
         </Button>
       </Box>
 
-      <PastGamesSection userId={userId} isAnonymous={isAnonymous} />
+      <PastGamesSection games={games} loading={gamesLoading} isAnonymous={isAnonymous} />
     </Box>
   );
 }

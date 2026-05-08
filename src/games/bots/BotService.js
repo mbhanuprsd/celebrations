@@ -1,8 +1,7 @@
 // src/games/bots/botService.js
-import { doc } from 'firebase/firestore';
+import { doc, deleteField } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { safeUpdateDoc } from '../../firebase/services';
-import { deleteField } from 'firebase/firestore';
 
 const BOT_NAMES = [
   'RoboMax', 'ByteBot', 'Glitch', 'Neon', 'Pixel', 'Spark',
