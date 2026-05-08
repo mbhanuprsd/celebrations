@@ -294,7 +294,7 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
     }
 
   }, [
-    isHost, roomId, gameType,
+    isHost, room, roomId, gameType,
     room?.slState?.turnCount,      room?.slState?.winner,
     room?.slState?.currentTurnIndex, room?.slState?.diceRolled,
     room?.ludoState?.turnCount,    room?.ludoState?.winner,
