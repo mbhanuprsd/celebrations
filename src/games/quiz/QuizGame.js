@@ -17,11 +17,12 @@ import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI'
 import {
   submitQuizAnswer, revealQuizAnswer, advanceQuizQuestion, resetQuizGame,
 } from './quizFirebaseService';
-import { generateQuizQuestions } from './quizGeminiService';
+import { generateQuizQuestions } from './quizGroqService';
 import {
   OPTION_LABELS, OPTION_COLORS, QUIZ_SETTINGS, TOPIC_MAP,
 } from './quizConstants';
-import { sendSystemMessage } from '../../firebase/services';
+import { sendSystemMessage, saveGameHistory } from '../../firebase/services';
+import { useBotTurns } from '../bots/useBotTurns';
 
 // ─── Winner overlay ──────────────────────────────────────────────────────
 function WinnerOverlay({ q, room, isHost, onReset, onLeave, resetting }) {
@@ -218,6 +219,7 @@ export function QuizGame() {
   const { state, notify } = useGameContext();
   const { leave } = useRoom();
   const { room, userId, roomId, isHost } = state;
+  useBotTurns({ room, roomId, isHost, gameType: 'quiz' });
   const q = room?.quizState;
 
   const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({
@@ -303,7 +305,29 @@ export function QuizGame() {
     return () => clearTimeout(id);
   }, [q, q?.currentIndex, q?.phase, isHost, roomId]);
 
-  // ── Answer handler ────────────────────────────────────────────────────
+  // ── Save game history once when quiz finishes ─────────────────────────
+  const quizSavedRef = useRef(false);
+  useEffect(() => {
+    if (!q || q.phase !== 'finished' || !userId || !room || quizSavedRef.current) return;
+    quizSavedRef.current = true;
+    const humanPlayers = (q.playerOrder || []).filter(uid => !room.players?.[uid]?.isBot);
+    const sorted       = [...humanPlayers].sort((a, b) => (q.scores[b] || 0) - (q.scores[a] || 0));
+    const myRank       = sorted.indexOf(userId) + 1 || humanPlayers.length;
+    const winnerUid    = sorted[0];
+    saveGameHistory(userId, {
+      gameType: 'quiz',
+      roomId,
+      myRank,
+      totalPlayers: humanPlayers.length,
+      winnerName: room.players?.[winnerUid]?.name || '',
+      rankedPlayers: sorted.map((uid, i) => ({
+        name: room.players?.[uid]?.name || uid,
+        score: q.scores[uid] || 0,
+        rank: i + 1,
+        isMe: uid === userId,
+      })),
+    });
+  }, [q?.phase]); // eslint-disable-line
   // FIX: use qRef so this callback is not recreated on every snapshot
   const handleAnswer = useCallback(async (idx) => {
     const cur = qRef.current;
@@ -322,7 +346,7 @@ export function QuizGame() {
     try {
       // FIX: notify all players that new questions are being generated
       await sendSystemMessage(roomId, '⏳ Host is generating new questions…');
-      const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+      const apiKey = process.env.REACT_APP_GROQ_API_KEY;
       const questions = await generateQuizQuestions(
         q.topic, QUIZ_SETTINGS.questionCount, apiKey
       );

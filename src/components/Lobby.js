@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Card, CardContent, Button, Chip, Avatar,
   List, ListItem, ListItemAvatar, ListItemText,
-  CircularProgress,
+  CircularProgress, IconButton,
 } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -13,6 +13,9 @@ import StarIcon from '@mui/icons-material/Star';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { useGameContext } from '../context/GameContext';
 import { useRoom } from '../hooks/useRoom';
 import { DrawingGameEngine } from '../games/drawing/DrawingGameEngine';
@@ -22,10 +25,11 @@ import { UnoGameEngine } from '../games/uno/UnoGameEngine';
 import { MiniGolfGameEngine } from '../games/minigolf/MiniGolfGameEngine';
 import { QuizGameEngine } from '../games/quiz/QuizGameEngine';
 import { GAME_META } from '../core/GameEngine';
-import { generateQuizQuestions } from '../games/quiz/quizGeminiService';
+import { generateQuizQuestions } from '../games/quiz/quizGroqService';
 import { safeUpdateDoc } from '../firebase/services';
 import { doc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { addBotToRoom, removeBotFromRoom, isBotSupported } from '../games/bots/BotService';
 
 const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine, minigolf: MiniGolfGameEngine, quiz: QuizGameEngine };
 
@@ -98,13 +102,26 @@ export function Lobby() {
   const { room, isHost, userId } = state;
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [addingBot, setAddingBot] = useState(false);
 
   // ── Quiz pre-generation ──────────────────────────────────────────────
   const [genStatus, setGenStatus] = useState('idle');  // idle | generating | done | fallback | error
   const [genCount, setGenCount]   = useState(0);
   const genDoneRef = useRef(false);  // prevent double-firing
+  const prevTopicRef = useRef(null);  // track topic changes
+
+  // Reset generation flag when topic changes so fresh questions are generated
+  useEffect(() => {
+    const currentTopic = room?.settings?.topic || 'General Knowledge';
+    if (prevTopicRef.current !== currentTopic) {
+      prevTopicRef.current = currentTopic;
+      genDoneRef.current = false;  // Allow regeneration on topic change
+      setGenStatus('idle');
+    }
+  }, [room?.settings?.topic]);
 
   useEffect(() => {
+
     if (!room || room.gameType !== 'quiz' || !isHost) return;
 
     // Already have questions stored in the room
@@ -123,11 +140,11 @@ export function Lobby() {
       try {
         const topic  = room.settings?.topic || 'General Knowledge';
         const count  = room.settings?.questionCount || 8;
-        const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+        const apiKey = process.env.REACT_APP_GROQ_API_KEY;
 
         const questions = await generateQuizQuestions(topic, count, apiKey);
 
-        // Detect whether Gemini or fallback was used (Gemini questions won't have _source)
+        // Detect whether Groq or fallback was used (Groq questions won't have _source)
         const isFallback = !apiKey || questions._source === 'fallback';
 
         // Store questions in room so all players + Start Game can access them instantly
@@ -145,7 +162,7 @@ export function Lobby() {
     };
 
     generate();
-  }, [room?.gameType, isHost, state.roomId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [room?.gameType, isHost, state.roomId, room?.settings?.topic]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Non-host: sync status from room state
   useEffect(() => {
@@ -167,6 +184,32 @@ export function Lobby() {
   const canStart  = isHost && players.length >= minPlayers && quizReady;
   const glow      = GAME_GLOW[gameType] || '#4CC9F0';
   const grad      = GAME_GRADIENTS[gameType] || GAME_GRADIENTS.drawing;
+
+  const supportsBot = isBotSupported(gameType);
+  const botPlayers  = players.filter(p => p.isBot);
+  const maxPlayers  = room.settings?.maxPlayers || 12;
+  const canAddBot   = isHost && supportsBot && players.length < maxPlayers;
+
+  const handleAddBot = async () => {
+    if (!canAddBot || addingBot) return;
+    setAddingBot(true);
+    try {
+      await addBotToRoom(room.id, room.players || {});
+    } catch (e) {
+      console.error(e);
+      notify('Failed to add bot', 'error');
+    } finally {
+      setAddingBot(false);
+    }
+  };
+
+  const handleRemoveBot = async (botId) => {
+    try {
+      await removeBotFromRoom(room.id, botId);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const copyCode = () => {
     navigator.clipboard.writeText(room.id);
@@ -207,7 +250,11 @@ export function Lobby() {
     { label: `Up to ${room.settings?.maxPlayers} players`, color: glow },
   ];
 
-  const startLabel = starting ? 'Starting…' : `Start Game (${players.length} players)`;
+  const humanCount = players.filter(p => !p.isBot).length;
+  const startLabel = starting ? 'Starting…'
+    : botPlayers.length > 0
+      ? `Start Game (${humanCount} + ${botPlayers.length} bots)`
+      : `Start Game (${players.length} players)`;
 
   return (
     <Box sx={{
@@ -319,12 +366,29 @@ export function Lobby() {
               }}>
                 Players
               </Typography>
-              <Chip label={`${players.length} / ${room.settings?.maxPlayers}`} size="small"
-                sx={{
-                  height: 20, fontSize: '0.62rem', fontWeight: 700,
-                  bgcolor: 'rgba(255,255,255,0.05)', color: '#8b949e',
-                  border: '1px solid rgba(255,255,255,0.08)'
-                }} />
+              <Box display="flex" alignItems="center" gap={1}>
+                {canAddBot && (
+                  <Button
+                    size="small"
+                    startIcon={addingBot ? null : <AddCircleOutlineIcon sx={{ fontSize: 14 }} />}
+                    onClick={handleAddBot}
+                    disabled={addingBot}
+                    sx={{
+                      fontSize: '0.65rem', fontWeight: 800, py: 0.3, px: 1,
+                      color: '#8b5cf6', borderRadius: '8px',
+                      border: '1px solid rgba(139,92,246,0.3)',
+                      '&:hover': { bgcolor: 'rgba(139,92,246,0.08)', borderColor: '#8b5cf6' },
+                    }}>
+                    {addingBot ? '…' : 'Add Bot'}
+                  </Button>
+                )}
+                <Chip label={`${players.length} / ${room.settings?.maxPlayers}`} size="small"
+                  sx={{
+                    height: 20, fontSize: '0.62rem', fontWeight: 700,
+                    bgcolor: 'rgba(255,255,255,0.05)', color: '#8b949e',
+                    border: '1px solid rgba(255,255,255,0.08)'
+                  }} />
+              </Box>
             </Box>
             <List dense disablePadding>
               <AnimatePresence>
@@ -334,16 +398,27 @@ export function Lobby() {
                     exit={{ opacity: 0, x: 14 }} transition={{ delay: i * 0.05 }}>
                     <ListItem sx={{
                       px: '10px', py: '7px', mb: 0.6, borderRadius: '12px',
-                      bgcolor: player.id === userId ? 'rgba(76,201,240,0.05)' : 'rgba(255,255,255,0.025)',
-                      border: player.id === userId ? '1px solid rgba(76,201,240,0.15)' : '1px solid rgba(255,255,255,0.05)',
+                      bgcolor: player.id === userId
+                        ? 'rgba(76,201,240,0.05)'
+                        : player.isBot
+                        ? 'rgba(139,92,246,0.04)'
+                        : 'rgba(255,255,255,0.025)',
+                      border: player.id === userId
+                        ? '1px solid rgba(76,201,240,0.15)'
+                        : player.isBot
+                        ? '1px solid rgba(139,92,246,0.15)'
+                        : '1px solid rgba(255,255,255,0.05)',
                     }}>
                       <ListItemAvatar sx={{ minWidth: 40 }}>
                         <Avatar sx={{
-                          bgcolor: player.avatar?.color, width: 32, height: 32,
+                          bgcolor: player.isBot ? '#8b5cf6' : player.avatar?.color,
+                          width: 32, height: 32,
                           fontSize: '0.75rem', fontWeight: 900,
                           boxShadow: player.id === room.hostId ? `0 0 10px ${player.avatar?.color}60` : 'none',
                         }}>
-                          {player.avatar?.initials || player.name[0]}
+                          {player.isBot
+                            ? <SmartToyIcon sx={{ fontSize: 16 }} />
+                            : (player.avatar?.initials || player.name[0])}
                         </Avatar>
                       </ListItemAvatar>
                       <ListItemText
@@ -352,6 +427,13 @@ export function Lobby() {
                             <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#e6edf3' }}>
                               {player.name}
                             </Typography>
+                            {player.isBot && (
+                              <Chip label="Bot" size="small" sx={{
+                                height: 17, fontSize: '0.58rem', fontWeight: 800,
+                                bgcolor: 'rgba(139,92,246,0.15)', color: '#8b5cf6',
+                                border: '1px solid rgba(139,92,246,0.3)',
+                              }} />
+                            )}
                             {player.id === room.hostId && (
                               <Chip icon={<StarIcon sx={{ fontSize: '10px !important', color: '#FFD166 !important' }} />}
                                 label="Host" size="small" sx={{
@@ -370,6 +452,13 @@ export function Lobby() {
                           </Box>
                         }
                       />
+                      {/* Host can remove bots */}
+                      {isHost && player.isBot && (
+                        <IconButton size="small" onClick={() => handleRemoveBot(player.id)}
+                          sx={{ color: '#484f58', '&:hover': { color: '#ef4444' }, p: 0.4 }}>
+                          <RemoveCircleOutlineIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      )}
                     </ListItem>
                   </motion.div>
                 ))}

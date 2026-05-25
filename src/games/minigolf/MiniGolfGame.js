@@ -13,7 +13,9 @@ import {
   BOARD_W, BOARD_H, BALL_R, HOLE_R, MAX_POWER, MAX_STROKES,
   HOLES, BALL_COLORS, stepBall,
 } from './minigolfConstants';
-import { endShot, resetMiniGolfGame } from './minigolfFirebaseService';
+import { endShot, fireShot, resetMiniGolfGame, skipTurn } from './minigolfFirebaseService';
+import { saveGameHistory } from '../../firebase/services';
+import { useBotTurns } from '../bots/useBotTurns';
 
 // ─── Drawing helpers ───────────────────────────────────────────────────────
 const WALL_COLOR = '#5d4037';
@@ -212,6 +214,7 @@ function Scoreboard({ u, room, playerColors }) {
   const playerOrder = u.playerOrder || [];
   const scores = u.scores || {};
   const holeCount = HOLES.length;
+  const PENALTY = MAX_STROKES + 2;
   return (
     <Box sx={{ bgcolor: 'rgba(0,0,0,0.55)', borderRadius: 2, p: 1.5,
       border: '1px solid rgba(255,255,255,0.08)', minWidth: 180 }}>
@@ -240,12 +243,18 @@ function Scoreboard({ u, room, playerColors }) {
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {name}
             </Typography>
-            {Array.from({ length: holeCount }).map((_, i) => (
-              <Typography key={i} sx={{ color: s[i] != null ? '#facc15' : '#555',
-                fontSize: '0.68rem', width: 20, textAlign: 'center', fontWeight: 700 }}>
-                {s[i] ?? '–'}
-              </Typography>
-            ))}
+            {Array.from({ length: holeCount }).map((_, i) => {
+              const isPenalty = s[i] === PENALTY;
+              return (
+                <Typography key={i} sx={{
+                  color: s[i] != null ? (isPenalty ? '#ef4444' : '#facc15') : '#555',
+                  fontSize: '0.65rem', width: 20, textAlign: 'center', fontWeight: 700,
+                  title: isPenalty ? 'Max strokes penalty' : undefined,
+                }}>
+                  {s[i] != null ? (isPenalty ? '✗' : s[i]) : '–'}
+                </Typography>
+              );
+            })}
             <Typography sx={{ color: total > 0 ? '#fff' : '#555', fontSize: '0.7rem',
               width: 28, textAlign: 'right', fontWeight: 900 }}>
               {total > 0 ? total : '–'}
@@ -253,6 +262,7 @@ function Scoreboard({ u, room, playerColors }) {
           </Box>
         );
       })}
+      <Typography sx={{ color: '#484f58', fontSize: '0.58rem', mt: 1 }}>✗ = max strokes penalty</Typography>
     </Box>
   );
 }
@@ -263,20 +273,24 @@ export function MiniGolfGame() {
   const { leave } = useRoom();
   const { room, userId, roomId } = state;
   const u = room?.miniGolfState;
+  const isHost = room?.hostId === userId;
+  useBotTurns({ room, roomId, isHost, gameType: 'minigolf' });
 
   const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({
     roomId, userId, gameType: 'minigolf', leaveCallback: leave,
   });
 
-  const canvasRef = useRef(null);
-  const aimRef    = useRef({ show: false, bx: 0, by: 0, angle: 0, power: 0 });
-  const ballsRef  = useRef({});   // local mutable copy for animation
-  const rafRef    = useRef(null);
+  const canvasRef     = useRef(null);
+  const aimRef        = useRef({ show: false, bx: 0, by: 0, angle: 0, power: 0 });
+  const ballsRef      = useRef({});   // local mutable copy for animation
+  const rafRef        = useRef(null);
+  const lastShotIdRef = useRef(null); // prevents re-running same pendingShot on re-render
 
   const [animating, setAnimating] = useState(false);
   const [localStrokes, setLocalStrokes] = useState(0);
   const [shotMsg, setShotMsg] = useState('');
   const [powerPct, setPowerPct] = useState(0);
+  const [showMobileScore, setShowMobileScore] = useState(false);
 
   const isMyTurn  = u && u.playerOrder?.[u.currentIndex] === userId;
   const holeData  = u ? (HOLES[u.currentHoleIdx] || HOLES[0]) : HOLES[0];
@@ -297,9 +311,10 @@ export function MiniGolfGame() {
   // ── Sync firebase ball positions into local ref ──────────────────────
   useEffect(() => {
     if (!u?.balls) return;
-    if (animating) return;  // don't overwrite while animating
+    if (animating) return;           // this client is animating
+    if (u?.pendingShot) return;      // another client is still animating
     ballsRef.current = JSON.parse(JSON.stringify(u.balls));
-  }, [u?.balls, animating]);
+  }, [u?.balls, u?.pendingShot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Reset local strokes when hole changes ─────────────────────────────
   useEffect(() => {
@@ -310,32 +325,35 @@ export function MiniGolfGame() {
   }, [u?.currentHoleIdx, userId, u]);
 
   // ── Canvas draw loop ──────────────────────────────────────────────────
+  // Use u?.playerOrder (primitive-stable array ref) instead of full u object
+  // to avoid redraw firing on every unrelated state change.
+  const playerOrder = u?.playerOrder;
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !u) return;
+    if (!canvas || !playerOrder) return;
     const ctx = canvas.getContext('2d');
     drawScene(
       ctx, holeData,
       ballsRef.current,
-      u.playerOrder || [],
+      playerOrder,
       playerColors,
       userId,
       animating ? null : (isMyTurn && !iAlreadySunk ? aimRef.current : null),
       holeFinished,
     );
-  }, [u, holeData, animating, isMyTurn, iAlreadySunk, holeFinished, playerColors, userId]);
+  }, [playerOrder, holeData, animating, isMyTurn, iAlreadySunk, holeFinished, playerColors, userId]);
 
   useEffect(() => {
     redraw();
   }, [redraw]);
 
   // ── Physics animation loop ──────────────────────────────────────────
-  const runPhysics = useCallback((uid, strokes) => {
+  const runPhysics = useCallback((uid, strokes, isShooter) => {
     const { walls, hole: holePos } = holeData;
     const ball = ballsRef.current[uid];
     if (!ball) return;
 
-    let currentStrokes = strokes;
+    cancelAnimationFrame(rafRef.current); // cancel any stale animation
 
     const tick = () => {
       const result = stepBall(ball, holePos, walls);
@@ -351,18 +369,21 @@ export function MiniGolfGame() {
       const wasSunk = result === 'sunk';
       if (wasSunk) {
         setShotMsg('⛳ In the hole!');
-      } else if (currentStrokes >= MAX_STROKES) {
-        setShotMsg(`⛳ Max strokes! (${currentStrokes})`);
+      } else if (strokes >= MAX_STROKES) {
+        setShotMsg(`Max strokes reached (${strokes})`);
       } else {
         setShotMsg('');
       }
 
-      // Push to Firebase
-      endShot(roomId, uid, ball.x, ball.y, currentStrokes, wasSunk || currentStrokes >= MAX_STROKES)
-        .catch(console.error);
+      // The shooter OR the host commits the result to Firebase
+      // (host handles bot shots since bots aren't real clients)
+      if (isShooter || isHost) {
+        endShot(roomId, uid, ball.x, ball.y, strokes, wasSunk || strokes >= MAX_STROKES)
+          .catch(console.error);
+      }
     };
     rafRef.current = requestAnimationFrame(tick);
-  }, [holeData, redraw, roomId]);
+  }, [holeData, redraw, roomId, isHost]);
 
   // ── Pointer aim handling ─────────────────────────────────────────────
   const getCanvasXY = (e) => {
@@ -383,49 +404,96 @@ export function MiniGolfGame() {
     const { x, y } = getCanvasXY(e);
     const ball = ballsRef.current[userId];
     if (!ball) return;
-    const angle = Math.atan2(y - ball.y, x - ball.x);
-    const dist  = Math.min(Math.hypot(x - ball.x, y - ball.y), MAX_POWER * 5);
-    const power = Math.min(dist / 5, MAX_POWER);
-    aimRef.current = { show: true, bx: ball.x, by: ball.y, angle, power };
-    setPowerPct(power / MAX_POWER);
-    redraw();
+    // Mark drag start — aim only shows after moving BALL_R away from initial click
+    aimRef.current = { show: false, bx: ball.x, by: ball.y, angle: 0, power: 0, dragStartX: x, dragStartY: y };
   };
 
   const handlePointerMove = (e) => {
-    if (!aimRef.current.show) return;
+    if (aimRef.current.dragStartX == null) return;
     e.preventDefault();
     const { x, y } = getCanvasXY(e);
     const ball = ballsRef.current[userId];
     if (!ball) return;
+    // Only begin showing aim once the pointer has moved > BALL_R from click origin
+    const dragDist = Math.hypot(x - aimRef.current.dragStartX, y - aimRef.current.dragStartY);
+    if (dragDist < BALL_R) return;
     const angle = Math.atan2(y - ball.y, x - ball.x);
     const dist  = Math.min(Math.hypot(x - ball.x, y - ball.y), MAX_POWER * 5);
     const power = Math.min(dist / 5, MAX_POWER);
-    aimRef.current = { show: true, bx: ball.x, by: ball.y, angle, power };
+    aimRef.current = { ...aimRef.current, show: true, angle, power };
     setPowerPct(power / MAX_POWER);
     redraw();
   };
 
   const handlePointerUp = (e) => {
-    if (!aimRef.current.show) return;
+    if (aimRef.current.dragStartX == null) return;
     e.preventDefault();
     const { angle, power } = aimRef.current;
     aimRef.current = { show: false };
     setPowerPct(0);
-    if (power < 0.5) return;  // tap with no drag → ignore
+    if (!power || power < 3) return;  // ignore taps or near-zero drags
 
     const ball = ballsRef.current[userId];
     if (!ball) return;
-    ball.vx = -Math.cos(angle) * power;
-    ball.vy = -Math.sin(angle) * power;
     const newStrokes = localStrokes + 1;
     setLocalStrokes(newStrokes);
-    setAnimating(true);
+    setAnimating(true); // immediate UI lock — actual physics starts when Firestore propagates
     setShotMsg('');
-    runPhysics(userId, newStrokes);
+    // Write shot vector to Firestore so ALL clients animate the ball moving
+    fireShot(roomId, userId, ball.x, ball.y, angle, power, newStrokes)
+      .catch(err => { console.error(err); setAnimating(false); });
   };
 
-  // Cleanup RAF on unmount
+  const mgSavedRef = useRef(false);
+  useEffect(() => {
+    if (!u?.winner || !userId || !room || mgSavedRef.current) return;
+    mgSavedRef.current = true;
+    const humanPlayers = (u.playerOrder || []).filter(uid => !room.players?.[uid]?.isBot);
+    const scores       = u.scores || {};
+    const sorted       = [...humanPlayers].sort(
+      (a, b) => (scores[a] || []).reduce((s, v) => s + v, 0) - (scores[b] || []).reduce((s, v) => s + v, 0)
+    );
+    const myRank    = sorted.indexOf(userId) + 1 || humanPlayers.length;
+    const winnerUid = sorted[0];
+    saveGameHistory(userId, {
+      gameType: 'minigolf',
+      roomId,
+      myRank,
+      totalPlayers: humanPlayers.length,
+      winnerName: room.players?.[winnerUid]?.name || '',
+      rankedPlayers: sorted.map((uid, i) => ({
+        name: room.players?.[uid]?.name || uid,
+        score: (scores[uid] || []).reduce((s, v) => s + v, 0),
+        rank: i + 1,
+        isMe: uid === userId,
+      })),
+    });
+  }, [u?.winner]); // eslint-disable-line
+
+  // ── Cleanup RAF on unmount ────────────────────────────────────────────
   useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
+
+  // ── Shared shot animation: fires on every client when pendingShot changes ──
+  // All clients run the same deterministic physics from the same start vector,
+  // so every player sees the ball move. Only the shooter calls endShot.
+  useEffect(() => {
+    const shot = u?.pendingShot;
+    if (!shot?.shotId) return;
+    if (shot.shotId === lastShotIdRef.current) return; // already handled
+    lastShotIdRef.current = shot.shotId;
+
+    // Place the ball at the exact position it was when fired
+    const ball = { ...(ballsRef.current[shot.uid] || {}), x: shot.fromX, y: shot.fromY };
+    ball.vx = -Math.cos(shot.angle) * shot.power;
+    ball.vy = -Math.sin(shot.angle) * shot.power;
+    ballsRef.current = { ...ballsRef.current, [shot.uid]: ball };
+
+    const isShooter = shot.uid === userId;
+    if (isShooter) setLocalStrokes(shot.strokes);
+    setAnimating(true);
+    setShotMsg('');
+    runPhysics(shot.uid, shot.strokes, isShooter);
+  }, [u?.pendingShot, userId, runPhysics]);
 
   // ── Guard: not ready yet ─────────────────────────────────────────────
   if (!room || !u || !u.playerOrder) return null;
@@ -547,10 +615,12 @@ export function MiniGolfGame() {
       {/* ── Bottom bar ── */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         px: 2, py: 1, bgcolor: 'rgba(0,0,0,0.5)', borderTop: '1px solid rgba(255,255,255,0.06)',
-        flexShrink: 0 }}>
-        {/* Mobile scoreboard toggle */}
-        <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 1, flexWrap: 'wrap' }}>
-          {u.playerOrder?.map((uid, i) => {
+        flexShrink: 0, gap: 1 }}>
+
+        {/* Mobile: tap chips to toggle full scorecard */}
+        <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 0.5, flexWrap: 'wrap', cursor: 'pointer' }}
+          onClick={() => setShowMobileScore(v => !v)}>
+          {u.playerOrder?.map((uid) => {
             const total = (u.scores?.[uid] || []).reduce((s, v) => s + v, 0);
             return (
               <Chip key={uid} size="small"
@@ -558,12 +628,27 @@ export function MiniGolfGame() {
                   {room.players?.[uid]?.name?.charAt(0)}
                 </Avatar>}
                 label={total || '0'}
-                sx={{ bgcolor: 'rgba(255,255,255,0.07)', color: '#e6edf3',
-                  fontSize: '0.68rem', height: 22 }}
+                sx={{ bgcolor: uid === userId ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.07)',
+                  color: '#e6edf3', fontSize: '0.68rem', height: 22 }}
               />
             );
           })}
+          <Typography sx={{ color: '#484f58', fontSize: '0.6rem', alignSelf: 'center' }}>
+            {showMobileScore ? '▲' : '▼'}
+          </Typography>
         </Box>
+
+        {/* Host skip button — visible when it's not the host's turn */}
+        {state.isHost && !isMyTurn && !animating && (
+          <Button size="small" variant="outlined"
+            onClick={() => skipTurn(roomId).catch(console.error)}
+            sx={{ fontWeight: 700, fontSize: '0.65rem', py: 0.3, px: 1,
+              borderRadius: 2, borderColor: 'rgba(250,204,21,0.3)', color: '#facc15', whiteSpace: 'nowrap',
+              '&:hover': { borderColor: '#facc15', bgcolor: 'rgba(250,204,21,0.08)' } }}>
+            ⏭ Skip turn
+          </Button>
+        )}
+
         <Button size="small" variant="outlined" startIcon={<ExitToAppIcon sx={{ fontSize: 14 }} />}
           onClick={requestLeave}
           sx={{ ml: 'auto', fontWeight: 700, fontSize: '0.7rem', py: 0.4, px: 1.5,
@@ -572,6 +657,24 @@ export function MiniGolfGame() {
           Leave
         </Button>
       </Box>
+
+      {/* Mobile full scorecard overlay */}
+      <AnimatePresence>
+        {showMobileScore && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            style={{ position: 'absolute', bottom: 60, left: 8, right: 8, zIndex: 40 }}
+            onClick={() => setShowMobileScore(false)}>
+            <Box sx={{ display: { xs: 'block', md: 'none' },
+              bgcolor: 'rgba(8,12,18,0.97)', borderRadius: 2, p: 1.5,
+              border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 -8px 30px rgba(0,0,0,0.6)' }}>
+              <Scoreboard u={u} room={room} playerColors={playerColors} />
+              <Typography sx={{ color: '#484f58', fontSize: '0.6rem', textAlign: 'center', mt: 0.5 }}>
+                Tap anywhere to close
+              </Typography>
+            </Box>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <OfflineBanner online={online} />
 

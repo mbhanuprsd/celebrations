@@ -124,5 +124,9 @@ export async function advanceQuizQuestion(roomId) {
 }
 
 export async function resetQuizGame(roomId, playerOrder, questions, topic) {
+  // Update both quizState and the cached questions field so rematch always gets fresh questions
   await initQuizGame(roomId, playerOrder, questions, topic);
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
+    quizQuestions: questions,  // Refresh the cached questions field for future rematches
+  });
 }

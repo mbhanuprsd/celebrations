@@ -89,22 +89,18 @@ export async function rollDice(roomId, userId) {
     }
 
     tx.update(doc(db, 'rooms', roomId), updates);
-    result = { value, movable, noMoves, forcedSkip };
+    // Return both result and color to avoid extra getDoc after transaction
+    result = { value, movable, noMoves, forcedSkip, color: myColor };
   });
 
   // System messages outside transaction (Firestore transactions cannot call other async ops)
+  // Use color from result to avoid redundant getDoc call
   if (result.noMoves && !result.forcedSkip) {
-    const snap = await getDoc(doc(db, 'rooms', roomId));
-    const ls = snap.data()?.ludoState;
-    const myColor = ls?.colorMap[userId];
     await sendSystemMessage(roomId,
-      `🎲 ${myColor?.toUpperCase()} rolled ${result.value} — no valid moves, turn skipped.`);
+      `🎲 ${result.color?.toUpperCase()} rolled ${result.value} — no valid moves, turn skipped.`);
   } else if (result.forcedSkip) {
-    const snap = await getDoc(doc(db, 'rooms', roomId));
-    const ls = snap.data()?.ludoState;
-    const myColor = ls?.colorMap[userId];
     await sendSystemMessage(roomId,
-      `🎲 ${myColor?.toUpperCase()} rolled three 6s — turn forfeited!`);
+      `🎲 ${result.color?.toUpperCase()} rolled three 6s — turn forfeited!`);
   }
 
   return result;

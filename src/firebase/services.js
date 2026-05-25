@@ -395,21 +395,32 @@ export const uploadWordBank = async () => {
   }
 };
 
-let cachedWords = [];
+// In-memory cache for word banks with TTL (5 minutes = 300000 ms)
+const WORD_BANK_CACHE_TTL = 5 * 60 * 1000;
+let wordBankCache = { en: null, loadedAt: 0 };
 
 export const loadWordBank = async (lang = 'en') => {
-  if (cachedWords.length) return; // already loaded
+  const now = Date.now();
+  // Return cached words if still fresh
+  if (wordBankCache[lang] && now - wordBankCache.loadedAt < WORD_BANK_CACHE_TTL) {
+    return;
+  }
+  
   try {
     const snap = await getDoc(doc(db, 'wordBank', lang));
-    if (snap.exists()) cachedWords = snap.data().words || [];
+    if (snap.exists()) {
+      wordBankCache[lang] = snap.data().words || [];
+      wordBankCache.loadedAt = now;
+    }
   } catch (e) {
     console.warn('Word bank load failed, using fallback:', e);
-    cachedWords = WORD_BANK.en; // keep the hardcoded list as fallback
+    wordBankCache[lang] = WORD_BANK[lang] || WORD_BANK.en;
+    wordBankCache.loadedAt = now;
   }
 };
 
 export const getWordChoices = (count = 3, usedWords = []) => {
-  const pool = cachedWords.length ? cachedWords : WORD_BANK.en;
+  const pool = wordBankCache.en?.length ? wordBankCache.en : WORD_BANK.en;
   const available = pool.filter(w => !usedWords.includes(w));
   const source = available.length >= count ? available : pool;
   return [...source].sort(() => Math.random() - 0.5).slice(0, count);

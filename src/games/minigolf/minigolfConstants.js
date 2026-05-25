@@ -69,10 +69,10 @@ export function stepBall(ball, hole, walls) {
   ball.vx *= FRICTION;
   ball.vy *= FRICTION;
 
-  if (ball.x - BALL_R < 0)       { ball.x = BALL_R;           ball.vx =  Math.abs(ball.vx) * 0.65; }
-  if (ball.x + BALL_R > BOARD_W) { ball.x = BOARD_W - BALL_R; ball.vx = -Math.abs(ball.vx) * 0.65; }
-  if (ball.y - BALL_R < 0)       { ball.y = BALL_R;           ball.vy =  Math.abs(ball.vy) * 0.65; }
-  if (ball.y + BALL_R > BOARD_H) { ball.y = BOARD_H - BALL_R; ball.vy = -Math.abs(ball.vy) * 0.65; }
+  if (ball.x - BALL_R < 0)       { ball.x = BALL_R;           ball.vx =  Math.abs(ball.vx) * 0.75; }
+  if (ball.x + BALL_R > BOARD_W) { ball.x = BOARD_W - BALL_R; ball.vx = -Math.abs(ball.vx) * 0.75; }
+  if (ball.y - BALL_R < 0)       { ball.y = BALL_R;           ball.vy =  Math.abs(ball.vy) * 0.75; }
+  if (ball.y + BALL_R > BOARD_H) { ball.y = BOARD_H - BALL_R; ball.vy = -Math.abs(ball.vy) * 0.75; }
 
   for (const w of walls) {
     const cx = Math.max(w.x, Math.min(ball.x, w.x + w.w));
@@ -86,14 +86,14 @@ export function stepBall(ball, hole, walls) {
       ball.x = cx + nx * (BALL_R + 1);
       ball.y = cy + ny * (BALL_R + 1);
       const dot = ball.vx * nx + ball.vy * ny;
-      ball.vx = (ball.vx - 2 * dot * nx) * 0.65;
-      ball.vy = (ball.vy - 2 * dot * ny) * 0.65;
+      ball.vx = (ball.vx - 2 * dot * nx) * 0.78;
+      ball.vy = (ball.vy - 2 * dot * ny) * 0.78;
     }
   }
 
   const hdx = ball.x - hole.x;
   const hdy = ball.y - hole.y;
-  if (Math.hypot(hdx, hdy) < HOLE_R + BALL_R * 0.4) return 'sunk';
+  if (Math.hypot(hdx, hdy) < HOLE_R + BALL_R * 0.6) return 'sunk';
 
   if (Math.hypot(ball.vx, ball.vy) < MIN_SPEED) { ball.vx = 0; ball.vy = 0; return 'stopped'; }
   return 'moving';

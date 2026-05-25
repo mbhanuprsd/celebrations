@@ -1,5 +1,5 @@
 // src/games/quiz/quizFallbackBank.js
-// Large built-in question bank used when Gemini API is unavailable.
+// Large built-in question bank used when Groq API is unavailable.
 // ~20 questions per topic, shuffled and sliced to the requested count.
 
 const BANK = {

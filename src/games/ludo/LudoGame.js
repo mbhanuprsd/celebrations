@@ -14,6 +14,7 @@ import { LudoDice } from './LudoDice';
 import { rollDice, movePiece, resetLudoGame } from './ludoFirebaseService';
 import { LUDO_COLORS } from './ludoConstants';
 import { saveGameHistory } from '../../firebase/services';
+import { useBotTurns } from '../bots/useBotTurns';
 
 // ─── Winner overlay ─────────────────────────────────────────────────────────
 function LudoWinnerOverlay({ ls, room, isHost, onReset, onLeave }) {
@@ -232,6 +233,7 @@ export function LudoGame() {
   const { state, notify } = useGameContext();
   const { leave }         = useRoom();
   const { room, userId, roomId, isHost, chat } = state;
+  useBotTurns({ room, roomId, isHost, gameType: 'ludo' });
   const [actionPending, setActionPending] = useState(false);
   const [logOpen, setLogOpen]             = useState(false);
 
@@ -257,19 +259,21 @@ export function LudoGame() {
     const r = roomRef.current;
     if (!r) return;
 
-    // FIX: ls.rankings is now an array of uids; winnerUid is the first finisher's uid
     const rankings = ls.rankings || (ls.winnerUid ? [ls.winnerUid] : []);
-    const myRank = rankings.indexOf(userId) + 1 || rankings.length + 1;
+    const allUids    = Object.keys(r.players || {});
+    const humanUids  = allUids.filter(uid => !r.players[uid]?.isBot);
+    const myRankIdx  = rankings.indexOf(userId);
+    const myRank     = myRankIdx >= 0 ? myRankIdx + 1 : humanUids.length;
     const winnerPlayer = r.players?.[ls.winnerUid];
-    const allUids = Object.keys(r.players || {});
-    const unrankedUids = allUids.filter(uid => !rankings.includes(uid));
-    const orderedUids = [...rankings, ...unrankedUids];
+    const humanRankings  = rankings.filter(uid => !r.players[uid]?.isBot);
+    const unrankedHumans = humanUids.filter(uid => !humanRankings.includes(uid));
+    const orderedUids    = [...humanRankings, ...unrankedHumans];
 
     saveGameHistory(userId, {
       gameType: 'ludo',
       roomId: r.id,
       myRank,
-      totalPlayers: allUids.length,
+      totalPlayers: humanUids.length,
       winnerName: winnerPlayer?.name || '',
       rankedPlayers: orderedUids.map((uid, i) => ({
         name: r.players?.[uid]?.name || uid,

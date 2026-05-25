@@ -16,6 +16,7 @@ import { SnakeLadderBoard } from './SnakeLadderBoard';
 import { rollSnakeDice, moveSnakePiece, resetSnakeLadderGame } from './snakeLadderFirebaseService';
 import { PLAYER_COLOR_MAP } from './snakeLadderConstants';
 import { saveGameHistory } from '../../firebase/services';
+import { useBotTurns } from '../bots/useBotTurns';
 
 // ─── Dot patterns for dice ─────────────────────────────────────────────────
 const DOTS = {
@@ -213,6 +214,7 @@ export function SnakeLadderGame() {
   const myColorId       = colorMap[userId];
   const myColor         = PLAYER_COLOR_MAP[myColorId];
   const isHost          = room?.hostId === userId;
+  useBotTurns({ room, roomId, isHost, gameType: 'snakeladder' });
   const myPos           = positions[userId] || 0;
   const alreadyFinished = rankings.includes(userId);
   const currentTurnColor = PLAYER_COLOR_MAP[colorMap[currentPlayerId]];
@@ -222,15 +224,17 @@ export function SnakeLadderGame() {
   useEffect(() => {
     if (!winner || !userId || !room || slSavedRef.current) return;
     slSavedRef.current = true;
-    const myRank = rankings.indexOf(userId) + 1 || playerOrder.length;
+    const humanOrder = playerOrder.filter(uid => !room.players?.[uid]?.isBot);
+    const myRankIdx  = rankings.indexOf(userId);
+    const myRank     = myRankIdx >= 0 ? myRankIdx + 1 : humanOrder.length;
     const winnerPlayer = room.players?.[winner];
-    const unfinished = playerOrder.filter(uid => !rankings.includes(uid));
-    const orderedUids = [...rankings, ...unfinished];
+    const unfinished = humanOrder.filter(uid => !rankings.includes(uid));
+    const orderedUids = [...rankings.filter(uid => !room.players?.[uid]?.isBot), ...unfinished];
     saveGameHistory(userId, {
       gameType: 'snakeladder',
       roomId: room.id,
       myRank,
-      totalPlayers: playerOrder.length,
+      totalPlayers: humanOrder.length,
       winnerName: winnerPlayer?.name || '',
       rankedPlayers: orderedUids.map((uid, i) => ({
         name: room.players?.[uid]?.name || uid,

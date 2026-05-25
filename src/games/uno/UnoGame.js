@@ -12,6 +12,7 @@ import { playUnoCard, drawUnoCard, resetUnoGame } from './unoFirebaseService';
 import { canPlayCard, getCardLabel, UNO_COLOR_META, PLAYABLE_COLORS } from './unoConstants';
 import { saveGameHistory } from '../../firebase/services';
 import { UnoErrorBoundary } from './ErrorBoundary';
+import { useBotTurns } from '../bots/useBotTurns';
 
 const C = UNO_COLOR_META;
 
@@ -208,6 +209,8 @@ export function UnoGame() {
   const { state } = useGameContext();
   const { leave } = useRoom();
   const { room, userId, isHost } = state;
+  const roomId = state.roomId;
+  useBotTurns({ room, roomId, isHost, gameType: 'uno' });
   const [pendingWild, setPendingWild] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -231,18 +234,20 @@ export function UnoGame() {
   useEffect(() => {
     if (!gameOver || !userId || !room || unoSavedRef.current) return;
     unoSavedRef.current = true;
-    const rankings = u?.rankings || [];
-    const allPlayers = u?.playerOrder || [];
-    const myFinalRank = myRank >= 0 ? myRank + 1 : allPlayers.length;
+    const rankings    = u?.rankings || [];
+    const allPlayers  = u?.playerOrder || [];
+    const humanPlayers = allPlayers.filter(uid => !room.players?.[uid]?.isBot);
+    const humanRankings = rankings.filter(uid => !room.players?.[uid]?.isBot);
+    const myRankIdx   = humanRankings.indexOf(userId);
+    const myFinalRank = myRankIdx >= 0 ? myRankIdx + 1 : humanPlayers.length;
     const winnerPlayer = room.players?.[u?.winner];
-    // rankings holds finish order; players not yet in rankings finished last
-    const unfinished = allPlayers.filter(uid => !rankings.includes(uid));
-    const orderedUids = [...rankings, ...unfinished];
+    const unfinished  = humanPlayers.filter(uid => !humanRankings.includes(uid));
+    const orderedUids = [...humanRankings, ...unfinished];
     saveGameHistory(userId, {
       gameType: 'uno',
       roomId: room.id,
       myRank: myFinalRank,
-      totalPlayers: allPlayers.length,
+      totalPlayers: humanPlayers.length,
       winnerName: winnerPlayer?.name || '',
       rankedPlayers: orderedUids.map((uid, i) => ({
         name: room.players?.[uid]?.name || uid,
