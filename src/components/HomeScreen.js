@@ -1693,7 +1693,6 @@ export function HomeScreen() {
   const { playerName, userId } = state;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('games');
-  const [activeSection, setActiveSection] = useState('games');
   const [localError, setLocalError] = useState('');
   const [singlePlayerGame, setSinglePlayerGame] = useState(null);
 
