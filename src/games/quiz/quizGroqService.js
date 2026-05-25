@@ -41,6 +41,7 @@ Rules:
 - Exactly one option must be correct.
 - Questions should be factual, clear, and varied in difficulty.
 - Do NOT repeat similar questions.
+- For every question, provide a legitimate, high-quality resource link (URL) that verifies the answer.
 - Return ONLY a JSON array, no markdown, no explanation.
 
 Format (strict JSON array):
@@ -48,7 +49,8 @@ Format (strict JSON array):
   {
     "question": "Question text here?",
     "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correctIndex": 0
+    "correctIndex": 0,
+    "resource": "https://example.com/verification-link"
   }
 ]
 
@@ -89,5 +91,6 @@ correctIndex is the 0-based index of the correct option.`;
       question:     q.question,
       options:      q.options.map(String),
       correctIndex: Math.min(3, Math.max(0, q.correctIndex)),
+      resource:     q.resource || '',
     }));
 }
