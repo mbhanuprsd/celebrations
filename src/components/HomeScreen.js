@@ -53,7 +53,6 @@ const RANK_MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
 const NAV_ITEMS = [
   { id: 'games',        label: 'The Arena',      icon: CelebrationIcon,     color: '#4CC9F0' },
   { id: 'singleplayer', label: 'Solo Zone',      icon: VideogameAssetIcon,  color: '#FF9F1C' },
-  { id: 'singleplayer', label: 'Solo Zone',      icon: VideogameAssetIcon,  color: '#FF9F1C' },
   { id: 'chat',         label: 'Yap Corner',     icon: ForumIcon,           color: '#F72585' },
   { id: 'profile',      label: 'My Alter Ego',   icon: BadgeIcon,           color: '#FFD166' },
   { id: 'help',         label: 'Lost? Read This',icon: AutoFixHighIcon,     color: '#06D6A0' },
