@@ -8,19 +8,24 @@ export async function initQuizGame(roomId, playerOrder, questions, topic) {
   const scores = {};
   playerOrder.forEach(uid => { scores[uid] = 0; });
 
+  // SECURITY: Separate the correct answers from the questions sent to clients.
+  // We store a 'publicQuestions' list (without correctIndex) and a 'correctAnswers' list.
+  const publicQuestions = questions.map(({ question, options, resource }) => ({
+    question,
+    options,
+    resource,
+  }));
+  const correctAnswers = questions.map(q => q.correctIndex);
+
   const quizState = {
     playerOrder,
-    questions,
+    questions: publicQuestions,
+    correctAnswers,
     topic,
     currentIndex: 0,
     phase: 'question',
     answers: {},
     scores,
-    // FIX: store a server timestamp alongside the millis value.
-    // The millis value is used for client-side countdown math (serverTimestamp
-    // isn't readable until after the write resolves). The server value is the
-    // authoritative reference — score calculation uses it via the snapshot,
-    // preventing clock-skew advantages and client-clock manipulation.
     questionStartTime: Date.now(),
     questionStartServerTime: serverTimestamp(),
     winner: null,
@@ -43,8 +48,11 @@ export async function submitQuizAnswer(roomId, userId, optionIndex) {
   const startMillis = q.questionStartServerTime?.toMillis?.()
     ?? q.questionStartTime;
   const elapsed = (Date.now() - startMillis) / 1000;
-  const currentQ = q.questions[q.currentIndex];
-  const isCorrect = optionIndex === currentQ.correctIndex;
+  
+  // SECURITY: Use the separated correctAnswers array instead of the public questions list.
+  const correctIndex = q.correctAnswers?.[q.currentIndex];
+  const isCorrect = optionIndex === correctIndex;
+  
   const score = isCorrect
     ? Math.max(50, QUIZ_SETTINGS.maxScore - Math.floor(elapsed * POINTS_PER_SECOND))
     : 0;

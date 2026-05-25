@@ -695,7 +695,7 @@ export const listenSoloLeaderboard = (gameId, callback, limitCount = 8) => {
 };
 
 // Word bank fallback (if Firestore load fails)
-const WORD_BANK = {
+export const WORD_BANK = {
   en: [
     // Animals (3-8 letters)
     'cat', 'dog', 'bat', 'rat', 'ant', 'bee', 'bug', 'fly', 'owl', 'ape', 'eel', 'emu', 

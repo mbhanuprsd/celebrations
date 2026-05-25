@@ -24,6 +24,7 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { RacingGame } from '../games/solo/RacingGame';
 import { TetrisGame } from '../games/solo/TetrisGame';
 import { FlappyBirdGame } from '../games/solo/FlappyBirdGame';
+import { WordleGame } from '../games/solo/WordleGame';
 import { useRoom } from '../hooks/useRoom';
 import { useOpenRooms } from '../hooks/useOpenRooms';
 import { useOnlineUsers } from '../hooks/useOnlineUsers';
@@ -49,8 +50,8 @@ const GAME_GRADIENTS = {
 const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0', uno: '#a855f7' };
 const RANK_MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
 const NAV_ITEMS = [
-  { id: 'singleplayer', label: 'Solo Zone',      icon: VideogameAssetIcon,  color: '#FF9F1C' },
   { id: 'games',        label: 'The Arena',      icon: CelebrationIcon,     color: '#4CC9F0' },
+  { id: 'singleplayer', label: 'Solo Zone',      icon: VideogameAssetIcon,  color: '#FF9F1C' },
   { id: 'chat',         label: 'Yap Corner',     icon: ForumIcon,           color: '#F72585' },
   { id: 'profile',      label: 'My Alter Ego',   icon: BadgeIcon,           color: '#FFD166' },
   { id: 'help',         label: 'Lost? Read This',icon: AutoFixHighIcon,     color: '#06D6A0' },
@@ -1580,6 +1581,14 @@ const SINGLE_PLAYER_GAMES = [
     color: '#06D6A0',
     gradient: 'linear-gradient(135deg, #06D6A0 0%, #4CC9F0 100%)',
   },
+  {
+    id: 'wordle',
+    label: 'Wordle',
+    icon: '🔠',
+    description: 'Guess the 5-letter word in 6 tries!',
+    color: '#6aaa64',
+    gradient: 'linear-gradient(135deg, #6aaa64 0%, #4a7a42 100%)',
+  },
 ];
 
 function SinglePlayerPanel({ onLaunch, userId }) {
@@ -1664,7 +1673,7 @@ export function HomeScreen() {
   const { state, logout, updateUsername } = useGameContext();
   const { playerName, userId } = state;
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState('singleplayer');
+  const [activeSection, setActiveSection] = useState('games');
   const [localError, setLocalError] = useState('');
   const [singlePlayerGame, setSinglePlayerGame] = useState(null);
 
@@ -1785,6 +1794,9 @@ export function HomeScreen() {
       )}
       {singlePlayerGame === 'flappy' && (
         <FlappyBirdGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
+      )}
+      {singlePlayerGame === 'wordle' && (
+        <WordleGame onExit={() => setSinglePlayerGame(null)} userId={userId} playerName={playerName} />
       )}
     </Box>
   );

@@ -430,7 +430,7 @@ export function QuizGame() {
                     label={OPTION_LABELS[idx]} text={opt} index={idx}
                     phase={q.phase}
                     myAnswer={q.answers?.[userId]}
-                    correctIndex={q.phase === 'reveal' ? currentQ.correctIndex : -1}
+                    correctIndex={q.phase === 'reveal' ? q.correctAnswers?.[q.currentIndex] : -1}
                     allAnswers={q.answers}
                     playerCount={total}
                     disabled={!!q.answers?.[userId] || q.phase !== 'question'}
