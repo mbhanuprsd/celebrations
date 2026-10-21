@@ -22,6 +22,7 @@ const SnakeLadderGameEngine = () => import('../games/snakeladder/SnakeLadderGame
 const UnoGameEngine = () => import('../games/uno/UnoGameEngine');
 const MiniGolfGameEngine = () => import('../games/minigolf/MiniGolfGameEngine');
 const QuizGameEngine = () => import('../games/quiz/QuizGameEngine');
+const BoggleGameEngine = () => import('../games/boggle/BoggleGameEngine');
 
 export const GameRegistry = {
   drawing: DrawingGameEngine,
@@ -30,6 +31,7 @@ export const GameRegistry = {
   uno: UnoGameEngine,
   minigolf: MiniGolfGameEngine,
   quiz: QuizGameEngine,
+  boggle: BoggleGameEngine,
 };
 
 export const GAME_META = {
@@ -80,6 +82,14 @@ export const GAME_META = {
     howToPlay: 'Choose a topic and the AI generates unique questions. Everyone sees the same question and 4 options. Answer correctly and fast to score points — up to 1000 per question. Most points after all questions wins!',
     minPlayers: 2, maxPlayers: 12,
     defaultSettings: { maxPlayers: 12, questionCount: 8, answerTime: 20, topic: 'general' },
+  },
+  boggle: {
+    label: 'Boggle Party',
+    icon: '🔤',
+    description: 'Find as many words as you can in the letter grid!',
+    howToPlay: 'Race to find words by connecting adjacent letters. Each tile can only be used once per word. Unique words score by length; words found by multiple players score no points.',
+    minPlayers: 2, maxPlayers: 12,
+    defaultSettings: { maxPlayers: 8, minWordLength: 3, roundDuration: 120 },
   },
 };
 

@@ -47,8 +47,9 @@ const GAME_GRADIENTS = {
   ludo: 'linear-gradient(135deg, #FFD166 0%, #EF476F 100%)',
   snakeladder: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)',
   uno: 'linear-gradient(135deg, #DC2626 0%, #7c3aed 100%)',
+  boggle: 'linear-gradient(135deg, #06D6A0 0%, #3A86FF 100%)',
 };
-const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0', uno: '#a855f7' };
+const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0', uno: '#a855f7', boggle: '#06D6A0' };
 const RANK_MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
 const NAV_ITEMS = [
   { id: 'games',        label: 'The Arena',      icon: CelebrationIcon,     color: '#4CC9F0' },
@@ -529,6 +530,7 @@ function GamesPanel({ playerName, onLocalError, localError }) {
   const [slSettings, setSlSettings] = useState({ maxPlayers: 4 });
   const [unoSettings, setUnoSettings] = useState({ maxPlayers: 6 });
   const [quizSettings, setQuizSettings] = useState({ maxPlayers: 12, questionCount: 8, topic: 'General Knowledge' });
+  const [boggleSettings, setBoggleSettings] = useState({ maxPlayers: 8, minWordLength: 3, roundDuration: 120 });
   const [resumeSession, setResumeSession] = useState(getStoredSession);
   const meta = GAME_META[gameType];
 
@@ -542,7 +544,8 @@ function GamesPanel({ playerName, onLocalError, localError }) {
       : gameType === 'snakeladder' ? slSettings
         : gameType === 'uno' ? unoSettings
           : gameType === 'quiz' ? { ...quizSettings, topic: quizSettings.topic.trim() }
-            : settings;
+            : gameType === 'boggle' ? boggleSettings
+              : settings;
     await create(playerName, gs, gameType);
   };
 
@@ -611,6 +614,13 @@ function GamesPanel({ playerName, onLocalError, localError }) {
                 {gameType === 'ludo' && <SettingSlider label="Players" icon="🎲" value={ludoSettings.maxPlayers} color="#FFD166" min={2} max={4} marks={[{ value: 2, label: '2' }, { value: 3, label: '3' }, { value: 4, label: '4' }]} onChange={v => setLudoSettings(s => ({ ...s, maxPlayers: v }))} />}
                 {gameType === 'snakeladder' && <SettingSlider label="Players" icon="🐍" value={slSettings.maxPlayers} color="#06D6A0" min={2} max={12} marks={[{ value: 2, label: '2' }, { value: 6, label: '6' }, { value: 12, label: '12' }]} onChange={v => setSlSettings(s => ({ ...s, maxPlayers: v }))} />}
                 {gameType === 'uno' && <SettingSlider label="Players" icon="🃏" value={unoSettings.maxPlayers} color="#a855f7" min={2} max={10} marks={[{ value: 2, label: '2' }, { value: 6, label: '6' }, { value: 10, label: '10' }]} onChange={v => setUnoSettings(s => ({ ...s, maxPlayers: v }))} />}
+                {gameType === 'boggle' && (
+                  <>
+                    <SettingSlider label="Max Players" icon="👥" value={boggleSettings.maxPlayers} color="#06D6A0" min={2} max={12} marks={[{ value: 2, label: '2' }, { value: 8, label: '8' }, { value: 12, label: '12' }]} onChange={v => setBoggleSettings(s => ({ ...s, maxPlayers: v }))} />
+                    <SettingSlider label="Minimum Word Length" icon="🔤" value={boggleSettings.minWordLength} color="#3A86FF" min={3} max={6} marks={[{ value: 3, label: '3' }, { value: 4, label: '4' }, { value: 5, label: '5' }, { value: 6, label: '6' }]} onChange={v => setBoggleSettings(s => ({ ...s, minWordLength: v }))} />
+                    <SettingSlider label="Round Time" icon="⏱️" value={boggleSettings.roundDuration} color="#FFB703" min={30} max={120} step={30} unit="s" marks={[{ value: 30, label: '30s' }, { value: 60, label: '60s' }, { value: 90, label: '90s' }, { value: 120, label: '120s' }]} onChange={v => setBoggleSettings(s => ({ ...s, roundDuration: v }))} />
+                  </>
+                )}
                 {gameType === 'quiz' && (
                   <Box>
                     <SettingSlider label="Questions" icon="❓" value={quizSettings.questionCount}

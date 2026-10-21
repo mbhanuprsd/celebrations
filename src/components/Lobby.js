@@ -24,6 +24,7 @@ import { SnakeLadderGameEngine } from '../games/snakeladder/SnakeLadderGameEngin
 import { UnoGameEngine } from '../games/uno/UnoGameEngine';
 import { MiniGolfGameEngine } from '../games/minigolf/MiniGolfGameEngine';
 import { QuizGameEngine } from '../games/quiz/QuizGameEngine';
+import { BoggleGameEngine } from '../games/boggle/BoggleGameEngine';
 import { GAME_META } from '../core/GameEngine';
 import { generateQuizQuestions } from '../games/quiz/quizGroqService';
 import { safeUpdateDoc } from '../firebase/services';
@@ -31,15 +32,16 @@ import { doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { addBotToRoom, removeBotFromRoom, isBotSupported } from '../games/bots/BotService';
 
-const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine, minigolf: MiniGolfGameEngine, quiz: QuizGameEngine };
+const GAME_ENGINES = { drawing: DrawingGameEngine, ludo: LudoGameEngine, snakeladder: SnakeLadderGameEngine, uno: UnoGameEngine, minigolf: MiniGolfGameEngine, quiz: QuizGameEngine, boggle: BoggleGameEngine };
 
 const GAME_GRADIENTS = {
   drawing: 'linear-gradient(135deg, #4CC9F0 0%, #7209B7 100%)',
   ludo: 'linear-gradient(135deg, #FFD166 0%, #EF476F 100%)',
   snakeladder: 'linear-gradient(135deg, #06D6A0 0%, #118AB2 100%)',
   quiz: 'linear-gradient(135deg, #4CC9F0 0%, #06D6A0 100%)',
+  boggle: 'linear-gradient(135deg, #06D6A0 0%, #3A86FF 100%)',
 };
-const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0', quiz: '#4CC9F0' };
+const GAME_GLOW = { drawing: '#4CC9F0', ludo: '#FFD166', snakeladder: '#06D6A0', quiz: '#4CC9F0', boggle: '#06D6A0' };
 
 // ── Quiz pre-generation status card ───────────────────────────────────────
 function QuizPregenerationCard({ status, count, topic, onRetry, isHost }) {
@@ -180,6 +182,7 @@ export function Lobby() {
   const meta      = GAME_META[gameType] || GAME_META.drawing;
   const minPlayers = meta.minPlayers || 2;
   const isQuiz    = gameType === 'quiz';
+  const isBoggle  = gameType === 'boggle';
   const quizReady = !isQuiz || genStatus === 'done' || genStatus === 'fallback';
   const canStart  = isHost && players.length >= minPlayers && quizReady;
   const glow      = GAME_GLOW[gameType] || '#4CC9F0';
@@ -246,6 +249,10 @@ export function Lobby() {
     { label: `${room.settings?.questionCount || 8} questions`, color: '#4CC9F0' },
     { label: `${room.settings?.answerTime || 20}s per question`, color: '#06D6A0' },
     { label: `Up to ${room.settings?.maxPlayers} players`, color: '#FFB703' },
+  ] : isBoggle ? [
+    { label: '4 × 4 letter grid', color: '#06D6A0' },
+    { label: `Words ${room.settings?.minWordLength || 3}+ letters`, color: '#3A86FF' },
+    { label: `${room.settings?.roundDuration || 120}s round`, color: '#FFB703' },
   ] : [
     { label: `Up to ${room.settings?.maxPlayers} players`, color: glow },
   ];

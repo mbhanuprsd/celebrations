@@ -68,6 +68,7 @@ export const createRoom = async (hostName, settings = {}, gameType = 'drawing') 
   // Build settings based on game type
   const defaultSettings = gameType === 'ludo' ? { maxPlayers: 4 }
     : gameType === 'snakeladder' ? { maxPlayers: 4 }
+      : gameType === 'boggle' ? { maxPlayers: 8, minWordLength: 3, roundDuration: 120 }
       : { maxPlayers: 8, rounds: 3, drawTime: 80, language: 'en' };
 
   const roomData = {

@@ -13,6 +13,7 @@ import { SnakeLadderGame } from './games/snakeladder/SnakeLadderGame';
 import { UnoGame } from './games/uno/UnoGame';
 import { MiniGolfGame } from './games/minigolf/MiniGolfGame';
 import { QuizGame } from './games/quiz/QuizGame';
+import { BoggleGame } from './games/boggle/BoggleGame';
 import { Box, CircularProgress, Typography } from '@mui/material';
 
 const GAME_COMPONENTS = {
@@ -22,6 +23,7 @@ const GAME_COMPONENTS = {
   uno: UnoGame,
   minigolf: MiniGolfGame,
   quiz: QuizGame,
+  boggle: BoggleGame,
 };
 
 
@@ -61,6 +63,7 @@ function AppContent() {
       case 'uno': return !!room.unoState;
       case 'minigolf': return !!room.miniGolfState;
       case 'quiz': return !!room.quizState;
+      case 'boggle': return !!room.boggleState;
       default: return true;
     }
   };
