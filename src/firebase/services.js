@@ -586,7 +586,7 @@ export const sendGlobalMessage = async (userId, playerName, text) => {
   });
 };
 
-export const listenGlobalChat = (callback) => {
+export const listenGlobalChat = (callback, onError) => {
   const q = query(
     collection(db, 'globalChat'),
     orderBy('timestamp', 'desc'),
@@ -597,7 +597,7 @@ export const listenGlobalChat = (callback) => {
       .map(d => ({ id: d.id, ...d.data() }))
       .reverse();
     callback(msgs);
-  });
+  }, onError);
 };
 
 export const listenActiveGames = (callback) => {

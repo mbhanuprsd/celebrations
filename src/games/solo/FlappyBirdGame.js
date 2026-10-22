@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Box, Typography, Button } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { saveSoloScore, getLocalSoloBest } from '../../firebase/services';
+import { getFrameDelta } from './soloGameUtils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const W = 360;
@@ -149,6 +150,7 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
   const idleRef     = useRef(null);
   const idleTick    = useRef(0);
   const lastPipeTs  = useRef(0);
+  const lastFrameTs = useRef(null);
 
   const [score,      setScore]      = useState(0);
   const [gameStatus, setGameStatus] = useState('idle');
@@ -197,6 +199,7 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
   const start = useCallback(() => {
     cancelAnimationFrame(idleRef.current);
     stateRef.current = initState();
+    lastFrameTs.current = null;
     // Delay first pipe so player has ~1.2 s to find their rhythm
     lastPipeTs.current = performance.now() + 1200;
     setScore(0);
@@ -225,15 +228,17 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
     const loop = (now) => {
       const s = stateRef.current;
       if (!s) return;
+      const frameDelta = getFrameDelta(now, lastFrameTs.current);
+      lastFrameTs.current = now;
 
-      s.wobble++;
-      s.bgOffset     += PIPE_SPEED * 0.4;
-      s.groundOffset  = (s.groundOffset + PIPE_SPEED) % W;
+      s.wobble       += frameDelta;
+      s.bgOffset     += PIPE_SPEED * 0.4 * frameDelta;
+      s.groundOffset  = (s.groundOffset + PIPE_SPEED * frameDelta) % W;
 
       if (!s.dead) {
         // Physics
-        s.birdVel = Math.min(s.birdVel + GRAVITY, MAX_VEL);
-        s.birdY  += s.birdVel;
+        s.birdVel = Math.min(s.birdVel + GRAVITY * frameDelta, MAX_VEL);
+        s.birdY  += s.birdVel * frameDelta;
 
         // Pipe spawn (time-based)
         if (now - lastPipeTs.current >= PIPE_INTERVAL) {
@@ -242,7 +247,7 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
         }
 
         // Move & cull pipes
-        s.pipes.forEach(p => { p.x -= PIPE_SPEED; });
+        s.pipes.forEach(p => { p.x -= PIPE_SPEED * frameDelta; });
         s.pipes = s.pipes.filter(p => p.x > -PIPE_WIDTH - 20);
 
         // Score
@@ -279,8 +284,8 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
       } else {
         // Death fall
         if (s.birdY < SKY_H - BIRD_R) {
-          s.birdVel = Math.min(s.birdVel + GRAVITY * 1.6, MAX_VEL * 1.5);
-          s.birdY  += s.birdVel;
+          s.birdVel = Math.min(s.birdVel + GRAVITY * 1.6 * frameDelta, MAX_VEL * 1.5);
+          s.birdY  += s.birdVel * frameDelta;
         }
       }
 

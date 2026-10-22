@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography, Button, Grid, TextField } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { saveSoloScore, getLocalSoloBest, WORD_BANK } from '../../firebase/services';
+import { chooseTargetWord, getLetterStatuses, isAllowedGuess, parseUsedWords } from './soloGameUtils';
 
 // Filter for 5-letter words only
 const FIVE_LETTER_WORDS = WORD_BANK.en.filter(word => word.length === 5).map(word => word.toUpperCase());
+const FIVE_LETTER_WORD_SET = new Set(FIVE_LETTER_WORDS);
 
 const MAX_ATTEMPTS = 6;
 const WORD_LENGTH = 5;
@@ -12,7 +14,7 @@ const WORD_LENGTH = 5;
 const getUsedWords = (userId) => {
   const key = `wordle_used_words_${userId}`;
   const stored = localStorage.getItem(key);
-  return stored ? JSON.parse(stored) : [];
+  return parseUsedWords(stored, FIVE_LETTER_WORD_SET);
 };
 
 const addUsedWord = (userId, word) => {
@@ -32,16 +34,26 @@ export const WordleGame = ({ onExit, userId, playerName }) => {
 
   useEffect(() => {
     // Load current score (words found)
-    const currentScore = getLocalSoloBest(userId, 'Wordle');
+    const currentScore = Math.max(
+      getLocalSoloBest(userId, 'wordle'),
+      getLocalSoloBest(userId, 'Wordle')
+    );
     setWordsFound(currentScore);
 
     // Select a new word
     const usedWords = getUsedWords(userId);
-    const availableWords = FIVE_LETTER_WORDS.filter(word => !usedWords.includes(word));
-    const wordList = availableWords.length > 0 ? availableWords : FIVE_LETTER_WORDS;
-    const randomWord = wordList[Math.floor(Math.random() * wordList.length)];
-    setTargetWord(randomWord);
+    setTargetWord(chooseTargetWord(FIVE_LETTER_WORDS, usedWords));
   }, [userId]);
+
+  useEffect(() => {
+    const currentScore = Math.max(
+      getLocalSoloBest(userId, 'wordle'),
+      getLocalSoloBest(userId, 'Wordle')
+    );
+    if (currentScore > getLocalSoloBest(userId, 'wordle')) {
+      saveSoloScore(userId, playerName, 'wordle', currentScore);
+    }
+  }, [userId, playerName]);
 
   const handleInputChange = (e) => {
     if (gameState !== 'playing') return;
@@ -55,6 +67,10 @@ export const WordleGame = ({ onExit, userId, playerName }) => {
       setMessage('Word must be 5 letters!');
       return;
     }
+    if (!isAllowedGuess(currentGuess, FIVE_LETTER_WORD_SET)) {
+      setMessage('Word not in the word list!');
+      return;
+    }
 
     const newGuesses = [...guesses, currentGuess];
     setGuesses(newGuesses);
@@ -66,7 +82,7 @@ export const WordleGame = ({ onExit, userId, playerName }) => {
       addUsedWord(userId, targetWord);
       const newScore = wordsFound + 1;
       setWordsFound(newScore);
-      saveSoloScore(userId, playerName, 'Wordle', newScore);
+      saveSoloScore(userId, playerName, 'wordle', newScore);
     } else if (newGuesses.length >= MAX_ATTEMPTS) {
       setGameState('lost');
     }
@@ -74,22 +90,11 @@ export const WordleGame = ({ onExit, userId, playerName }) => {
 
   const resetGame = () => {
     const usedWords = getUsedWords(userId);
-    const availableWords = FIVE_LETTER_WORDS.filter(word => !usedWords.includes(word));
-    const wordList = availableWords.length > 0 ? availableWords : FIVE_LETTER_WORDS;
-    const randomWord = wordList[Math.floor(Math.random() * wordList.length)];
-    
-    setTargetWord(randomWord);
+    setTargetWord(chooseTargetWord(FIVE_LETTER_WORDS, usedWords));
     setGuesses([]);
     setCurrentGuess('');
     setGameState('playing');
     setMessage('');
-  };
-
-  const getLetterColor = (letter, index, guess) => {
-    if (!targetWord) return 'default';
-    if (targetWord[index] === letter) return 'correct';
-    if (targetWord.includes(letter)) return 'present';
-    return 'absent';
   };
 
   const getCellStyle = (color) => {
@@ -131,13 +136,14 @@ export const WordleGame = ({ onExit, userId, playerName }) => {
       <Box sx={{ display: 'grid', gridTemplateRows: `repeat(${MAX_ATTEMPTS}, 1fr)`, gap: 1, mb: 4 }}>
         {Array.from({ length: MAX_ATTEMPTS }).map((_, rowIndex) => {
           const guess = guesses[rowIndex];
+          const letterStatuses = guess ? getLetterStatuses(targetWord, guess) : [];
           const isCurrent = rowIndex === guesses.length;
           
           return (
             <Grid container spacing={1} key={rowIndex}>
               {Array.from({ length: WORD_LENGTH }).map((_, colIndex) => {
                 const letter = isCurrent ? currentGuess[colIndex] : (guess ? guess[colIndex] : '');
-                const color = guess ? getLetterColor(letter, colIndex, guess) : 'default';
+                const color = guess ? letterStatuses[colIndex] : 'default';
                 return (
                   <Box 
                     key={colIndex} 

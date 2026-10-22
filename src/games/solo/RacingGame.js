@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Box, Typography, Button } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { saveSoloScore, getLocalSoloBest } from '../../firebase/services';
+import { getFrameDelta } from './soloGameUtils';
 
 const W = 360;
 const H = 600;
@@ -100,6 +101,7 @@ export function RacingGame({ onExit, userId, playerName }) {
   const canvasRef = useRef(null);
   const stateRef = useRef(null);
   const animRef = useRef(null);
+  const lastFrameTs = useRef(null);
   const [score, setScore] = useState(0);
   const [gameStatus, setGameStatus] = useState('idle'); // idle | playing | dead
   const [bestScore, setBestScore] = useState(() => getLocalSoloBest(userId, 'racing'));
@@ -122,6 +124,7 @@ export function RacingGame({ onExit, userId, playerName }) {
 
   const start = useCallback(() => {
     stateRef.current = initState();
+    lastFrameTs.current = null;
     setScore(0);
     setGameStatus('playing');
   }, [initState]);
@@ -161,23 +164,25 @@ export function RacingGame({ onExit, userId, playerName }) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
 
-    const loop = () => {
+    const loop = (now) => {
       const s = stateRef.current;
       if (!s) return;
+      const frameDelta = getFrameDelta(now, lastFrameTs.current);
+      lastFrameTs.current = now;
 
       // Move car toward target lane
       const targetX = getLaneX(s.targetLane);
       const dx = targetX - s.carX;
-      s.carX += dx * 0.18;
+      s.carX += dx * (1 - Math.pow(1 - 0.18, frameDelta));
 
       // Road scroll
-      s.roadOffset = (s.roadOffset + s.speed) % (40 + 30);
+      s.roadOffset = (s.roadOffset + s.speed * frameDelta) % (40 + 30);
 
       // Speed up over time
-      s.speed += SPEED_INCREMENT;
+      s.speed += SPEED_INCREMENT * frameDelta;
 
       // Spawn obstacles
-      s.spawnTimer++;
+      s.spawnTimer += frameDelta;
       const spawnInterval = Math.max(35, 80 - s.speed * 4);
       if (s.spawnTimer >= spawnInterval) {
         s.spawnTimer = 0;
@@ -190,7 +195,7 @@ export function RacingGame({ onExit, userId, playerName }) {
       }
 
       // Move obstacles
-      s.obstacles.forEach(o => { o.y += s.speed; });
+      s.obstacles.forEach(o => { o.y += s.speed * frameDelta; });
       s.obstacles = s.obstacles.filter(o => o.y < H + 20);
 
       // Collision
@@ -220,7 +225,7 @@ export function RacingGame({ onExit, userId, playerName }) {
       }
 
       // Score
-      s.score += s.speed * 0.1;
+      s.score += s.speed * 0.1 * frameDelta;
       const rounded = Math.floor(s.score);
       setScore(rounded);
 
@@ -235,7 +240,7 @@ export function RacingGame({ onExit, userId, playerName }) {
         drawCar(ctx, s.carX, s.carY, '#4cc9f0', '#2a6f8f');
       } else {
         // Explosion
-        s.explosionFrame++;
+        s.explosionFrame += frameDelta;
         drawExplosion(ctx, s.explosionX, s.explosionY, s.explosionFrame);
         if (s.explosionFrame > 30) return; // stop loop
       }

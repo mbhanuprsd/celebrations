@@ -814,28 +814,52 @@ function GlobalChatPanel({ userId, playerName }) {
   const [messages, setMessages]   = useState([]);
   const [input,    setInput]      = useState('');
   const [sending,  setSending]    = useState(false);
+  const [chatError, setChatError] = useState('');
   const { count: onlineCount }    = useOnlineUsers();
-  const bottomRef  = useRef(null);
+  const { notify } = useGameContext();
   const inputRef   = useRef(null);
+  const messagesRef = useRef(null);
+  const stickToBottomRef = useRef(true);
 
   useEffect(() => {
-    const unsub = listenGlobalChat(setMessages);
+    const unsub = listenGlobalChat(
+      nextMessages => {
+        setMessages(nextMessages);
+        setChatError('');
+      },
+      error => {
+        console.error('Global chat listener failed:', error);
+        setChatError('Could not load chat messages. Please try again later.');
+      }
+    );
     return unsub;
   }, []);
 
-  // Scroll to bottom on new messages, but only if already near bottom
+  // Keep the latest messages in view without pulling users away from older messages.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (stickToBottomRef.current) {
+      const messagesElement = messagesRef.current;
+      messagesElement?.scrollTo({
+        top: messagesElement.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   }, [messages]);
 
   const handleSend = async () => {
-    const text = input.trim();
+    const draft = input;
+    const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
-    setInput('');
-    inputRef.current?.focus();
-    try { await sendGlobalMessage(userId, playerName, text); }
-    catch (e) { console.error(e); }
+    try {
+      await sendGlobalMessage(userId, playerName, text);
+      setInput(current => current === draft ? '' : current);
+      setChatError('');
+      inputRef.current?.focus();
+    } catch (e) {
+      console.error('Global chat send failed:', e);
+      notify('Could not send your message. Your draft has been kept.', 'error');
+    }
     finally { setSending(false); }
   };
 
@@ -860,6 +884,7 @@ function GlobalChatPanel({ userId, playerName }) {
     <Box sx={{
       display: 'flex', flexDirection: 'column',
       height: 'calc(100dvh - 80px)',
+      minHeight: 0, boxSizing: 'border-box',
       mx: { xs: -1.5, sm: -2 },       // cancel parent horizontal padding
       borderRadius: '0 0 22px 22px',
       overflow: 'hidden',
@@ -905,7 +930,7 @@ function GlobalChatPanel({ userId, playerName }) {
 
       {/* ── Chat wallpaper + messages ────────────────────────────────────── */}
       <Box sx={{
-        flex: 1, overflowY: 'auto', position: 'relative',
+        flex: 1, minHeight: 0, overflowY: 'auto', position: 'relative',
         // subtle dot-grid wallpaper like WhatsApp
         bgcolor: '#0a0f1a',
         backgroundImage: [
@@ -915,7 +940,18 @@ function GlobalChatPanel({ userId, playerName }) {
         px: 1.5, py: 1,
         '&::-webkit-scrollbar': { width: 3 },
         '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2 },
-      }}>
+      }}
+        ref={messagesRef}
+        onScroll={event => {
+          const element = event.currentTarget;
+          stickToBottomRef.current =
+            element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+        }}>
+        {chatError && (
+          <Alert severity="error" sx={{ mb: 1, fontSize: '0.78rem' }}>
+            {chatError}
+          </Alert>
+        )}
 
         {/* Empty state */}
         {messages.length === 0 && (
@@ -957,11 +993,11 @@ function GlobalChatPanel({ userId, playerName }) {
               {/* Row */}
               <Box sx={{
                 display: 'flex',
-                flexDirection: mine ? 'row-reverse' : 'row',
+                justifyContent: mine ? 'flex-end' : 'flex-start',
                 alignItems: 'flex-end',
                 gap: 0.7,
                 mb: msg.isLastOfRun ? 0.9 : 0.25,
-                px: 0.5,
+                px: { xs: 0.25, sm: 0.5 },
               }}>
                 {/* Avatar — only show at end of other's run */}
                 {!mine && (
@@ -979,11 +1015,15 @@ function GlobalChatPanel({ userId, playerName }) {
                   initial={{ opacity: 0, scale: 0.92, y: 6 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ type: 'spring', stiffness: 340, damping: 28 }}
-                  style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}
+                  style={{
+                    maxWidth: 'min(82%, 420px)', minWidth: 0,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: mine ? 'flex-end' : 'flex-start',
+                  }}
                 >
                   {/* Sender name (first of their run, not mine) */}
                   {!mine && msg.isFirstOfRun && (
-                    <Typography sx={{ fontSize: '0.67rem', fontWeight: 800, color, mb: 0.3, ml: 1.2 }}>
+                    <Typography sx={{ fontSize: '0.67rem', fontWeight: 800, color, mb: 0.3, ml: 0.5 }}>
                       {msg.name}
                     </Typography>
                   )}
@@ -991,6 +1031,12 @@ function GlobalChatPanel({ userId, playerName }) {
                   {/* The bubble itself */}
                   <Box sx={{
                     position: 'relative',
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto',
+                    alignItems: 'end',
+                    columnGap: 0.8,
+                    width: 'fit-content',
+                    maxWidth: '100%',
                     px: 1.3, pt: 0.75, pb: 0.5,
                     borderRadius: mine
                       ? msg.isLastOfRun ? '18px 18px 4px 18px' : '18px'
@@ -1059,16 +1105,15 @@ function GlobalChatPanel({ userId, playerName }) {
                     <Typography sx={{
                       fontSize: '0.87rem', fontWeight: 500, lineHeight: 1.5,
                       color: mine ? '#dff3fb' : '#c9d1d9',
-                      wordBreak: 'break-word',
-                      pr: 5,  // space for timestamp
+                      wordBreak: 'break-word', overflowWrap: 'anywhere',
                     }}>
                       {msg.text}
                     </Typography>
 
-                    {/* Timestamp + tick — bottom right inside bubble */}
+                    {/* Timestamp stays in its own grid column to avoid overlapping text. */}
                     <Box sx={{
-                      position: 'absolute', bottom: 5, right: 9,
                       display: 'flex', alignItems: 'center', gap: 0.3,
+                      whiteSpace: 'nowrap', pb: 0.1,
                     }}>
                       <Typography sx={{ fontSize: '0.58rem', color: mine ? 'rgba(223,243,251,0.5)' : 'rgba(139,148,158,0.7)', lineHeight: 1, whiteSpace: 'nowrap' }}>
                         {formatTime(msg.timestamp)}
@@ -1081,13 +1126,11 @@ function GlobalChatPanel({ userId, playerName }) {
             </React.Fragment>
           );
         })}
-
-        <div ref={bottomRef} />
       </Box>
 
       {/* ── Input bar ────────────────────────────────────────────────────── */}
       <Box sx={{
-        display: 'flex', alignItems: 'flex-end', gap: 1,
+        display: 'flex', alignItems: 'flex-end', gap: { xs: 0.75, sm: 1 },
         px: 1.5, py: 1.2,
         background: 'rgba(14,18,27,0.96)',
         backdropFilter: 'blur(20px)',
@@ -1100,7 +1143,7 @@ function GlobalChatPanel({ userId, playerName }) {
           bgcolor: 'rgba(255,255,255,0.06)',
           border: '1px solid rgba(255,255,255,0.1)',
           borderRadius: '24px',
-          px: 1.8, py: 0.6,
+          minWidth: 0, px: { xs: 1.4, sm: 1.8 }, py: 0.6,
           transition: 'border-color 0.2s',
           '&:focus-within': { borderColor: 'rgba(247,37,133,0.5)' },
         }}>
@@ -1125,16 +1168,18 @@ function GlobalChatPanel({ userId, playerName }) {
         </Box>
 
         {/* Send button */}
-        <motion.div whileTap={{ scale: 0.88 }} whileHover={{ scale: 1.05 }}>
-          <Box
+        <motion.div whileTap={!sending && !!input.trim() ? { scale: 0.88 } : {}}
+          whileHover={!sending && !!input.trim() ? { scale: 1.05 } : {}}>
+          <IconButton
+            aria-label="Send message"
             onClick={handleSend}
+            disabled={!input.trim() || sending}
             sx={{
               width: 46, height: 46, flexShrink: 0, borderRadius: '50%',
               background: input.trim()
                 ? 'linear-gradient(135deg, #F72585 0%, #7209B7 100%)'
                 : 'rgba(255,255,255,0.07)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: input.trim() ? 'pointer' : 'default',
+              cursor: input.trim() && !sending ? 'pointer' : 'default',
               boxShadow: input.trim() ? '0 4px 18px rgba(247,37,133,0.4)' : 'none',
               transition: 'all 0.2s',
             }}
@@ -1143,7 +1188,7 @@ function GlobalChatPanel({ userId, playerName }) {
               ? <CircularProgress size={18} sx={{ color: 'rgba(255,255,255,0.6)' }} />
               : <SendIcon sx={{ fontSize: 19, color: input.trim() ? 'white' : '#484f58', ml: '2px', transition: 'color 0.2s' }} />
             }
-          </Box>
+          </IconButton>
         </motion.div>
       </Box>
     </Box>
