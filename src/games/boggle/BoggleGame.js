@@ -88,6 +88,10 @@ export function BoggleGame() {
   );
   const wordsFoundBy = uid => Object.values(submissions)
     .filter(foundBy => foundBy?.[uid]).length;
+  const wordsForPlayer = uid => Object.entries(submissions)
+    .filter(([, foundBy]) => foundBy?.[uid])
+    .map(([word, foundBy]) => ({ word, shared: Object.keys(foundBy).length > 1 }))
+    .sort((a, b) => a.word.localeCompare(b.word));
 
   const showWordFeedback = (message, status, rawWord, path = []) => {
     clearTimeout(feedbackTimerRef.current);
@@ -96,7 +100,7 @@ export function BoggleGame() {
     feedbackTimerRef.current = setTimeout(() => {
       setWordFeedback(null);
       setFeedbackPath([]);
-    }, 1400);
+    }, 800);
   };
 
   const handleSubmit = async (rawWord, path = []) => {
@@ -287,7 +291,7 @@ export function BoggleGame() {
                     : '0 4px 12px rgba(0,0,0,0.25)',
                   color: '#f1f5f9', fontSize: { xs: '2rem', sm: '2.8rem' }, fontWeight: 900,
                   textTransform: 'uppercase',
-                  transition: 'background-color 0.08s, border-color 0.08s, box-shadow 0.08s',
+                  transition: 'background-color 0.04s, border-color 0.04s, box-shadow 0.04s',
                 }}>
                   {letter}
                 </Box>
@@ -316,7 +320,7 @@ export function BoggleGame() {
                           ? { opacity: 1, y: 0, scale: [0.96, 1.04, 1], x: [0, -4, 4, -3, 0] }
                           : { opacity: 1, y: 0, scale: [0.96, 1.08, 1] }}
                         exit={{ opacity: 0, y: -4 }}
-                        transition={{ duration: 0.35 }}>
+                        transition={{ duration: 0.18 }}>
                         <Typography sx={{
                           color: wordFeedback.status === 'correct' ? ACCENT : '#ef6b6b',
                           fontWeight: 900, fontSize: '0.8rem',
@@ -398,11 +402,12 @@ export function BoggleGame() {
             <motion.div initial={{ opacity: 0, y: 24, scale: 0.92 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ type: 'spring', stiffness: 240, damping: 20 }}
-              style={{ width: 'min(100%, 440px)' }}>
+              style={{ width: 'min(100%, 520px)', maxHeight: 'calc(100dvh - 32px)' }}>
               <Box sx={{
-                p: { xs: 2.5, sm: 3.5 }, borderRadius: '22px', textAlign: 'center',
+                p: { xs: 1.5, sm: 3.5 }, borderRadius: '22px', textAlign: 'center',
                 bgcolor: '#111a24', border: '1px solid rgba(6,214,160,0.35)',
                 boxShadow: '0 20px 80px rgba(0,0,0,0.5)',
+                maxHeight: 'calc(100dvh - 32px)', display: 'flex', flexDirection: 'column',
               }}>
                 <motion.div initial={{ scale: 0.5, rotate: -12 }}
                   animate={{ scale: [0.5, 1.15, 1], rotate: 0 }}
@@ -415,10 +420,12 @@ export function BoggleGame() {
                 <Typography sx={{ mb: 2, color: '#8b949e', fontSize: '0.8rem' }}>
                   Final scores · unique words: 2 pts · shared words: 1 pt per finder
                 </Typography>
-                <Box sx={{ display: 'grid', gap: 0.8, mb: 2.5 }}>
+                <Box sx={{
+                  display: 'grid', gap: 0.8, mb: 1.5, maxHeight: '14dvh',
+                  overflowY: 'auto', flexShrink: 0,
+                }}>
                   {sortedPlayers.map((uid, index) => (
-                    <motion.div key={uid} initial={{ opacity: 0, x: -12 }}
-                      animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.12 + index * 0.08 }}>
+                    <Box key={uid}>
                       <Box sx={{
                         display: 'flex', alignItems: 'center', gap: 1, p: 1,
                         borderRadius: '10px',
@@ -434,16 +441,55 @@ export function BoggleGame() {
                           {game.scores?.[uid] || 0} pts
                         </Typography>
                       </Box>
-                    </motion.div>
+                    </Box>
                   ))}
                 </Box>
+                <Typography sx={{ color: '#8ab4ff', fontWeight: 800, textAlign: 'left', mb: 0.75 }}>
+                  Words found
+                </Typography>
+                <Box sx={{
+                  display: 'grid', gap: 1, maxHeight: '18dvh', overflowY: 'auto',
+                  textAlign: 'left', mb: 1.5, flexShrink: 0,
+                }}>
+                  {sortedPlayers.map(uid => {
+                    const playerWords = wordsForPlayer(uid);
+                    return (
+                      <Box key={uid} sx={{
+                        p: 1, borderRadius: '10px', bgcolor: 'rgba(255,255,255,0.04)',
+                      }}>
+                        <Typography sx={{ fontSize: '0.8rem', fontWeight: 800, mb: 0.6 }}>
+                          {uid === userId ? 'You' : room.players?.[uid]?.name || 'Player'}
+                          <Typography component="span" sx={{ color: '#8b949e', fontSize: '0.72rem', ml: 0.75 }}>
+                            ({playerWords.length})
+                          </Typography>
+                        </Typography>
+                        {playerWords.length === 0 ? (
+                          <Typography sx={{ color: '#687582', fontSize: '0.75rem' }}>No words found</Typography>
+                        ) : (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6 }}>
+                            {playerWords.map(({ word, shared }) => (
+                              <Chip key={word} size="small"
+                                label={`${word.toUpperCase()}${shared ? ' · shared' : ''}`}
+                                sx={{
+                                  height: 24, fontSize: '0.68rem',
+                                  color: shared ? '#8b949e' : '#e6edf3',
+                                  bgcolor: shared ? 'rgba(255,255,255,0.06)' : 'rgba(6,214,160,0.12)',
+                                }} />
+                            ))}
+                          </Box>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-                  {isHost && (
-                    <Button onClick={handlePlayAgain} disabled={playingAgain} startIcon={<ReplayIcon />}
-                      variant="contained" sx={{ bgcolor: ACCENT, color: '#06261d', fontWeight: 900 }}>
-                      {playingAgain ? 'Starting…' : 'Play Again'}
-                    </Button>
-                  )}
+                  <Button onClick={handlePlayAgain} disabled={!isHost || playingAgain} startIcon={<ReplayIcon />}
+                    variant="contained" sx={{
+                      bgcolor: isHost ? ACCENT : 'rgba(255,255,255,0.12)',
+                      color: isHost ? '#06261d' : '#8b949e', fontWeight: 900,
+                    }}>
+                    {playingAgain ? 'Starting…' : isHost ? 'Play Again' : 'Waiting for host'}
+                  </Button>
                   <Button onClick={requestLeave} variant="outlined"
                     sx={{ color: '#ef6b6b', borderColor: 'rgba(239,107,107,0.4)' }}>
                     Leave
