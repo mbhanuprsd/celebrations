@@ -88,10 +88,6 @@ export function BoggleGame() {
   );
   const wordsFoundBy = uid => Object.values(submissions)
     .filter(foundBy => foundBy?.[uid]).length;
-  const wordsForPlayer = uid => Object.entries(submissions)
-    .filter(([, foundBy]) => foundBy?.[uid])
-    .map(([word, foundBy]) => ({ word, shared: Object.keys(foundBy).length > 1 }))
-    .sort((a, b) => a.word.localeCompare(b.word));
 
   const showWordFeedback = (message, status, rawWord, path = []) => {
     clearTimeout(feedbackTimerRef.current);
@@ -338,12 +334,19 @@ export function BoggleGame() {
             ) : (
               <Box sx={{ mt: 2, p: 2, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
                 <Typography sx={{ color: '#ffd166', fontWeight: 900, fontSize: '1.2rem' }}>Round complete!</Typography>
-                {isHost && (
-                  <Button onClick={handlePlayAgain} disabled={playingAgain} startIcon={<ReplayIcon />}
-                    sx={{ mt: 1, color: ACCENT, fontWeight: 800 }}>
-                    {playingAgain ? 'Starting…' : 'Play Again'}
+                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                  <Button onClick={handlePlayAgain} disabled={!isHost || playingAgain}
+                    startIcon={<ReplayIcon />} variant="contained" sx={{
+                      bgcolor: isHost ? ACCENT : 'rgba(255,255,255,0.12)',
+                      color: isHost ? '#06261d' : '#8b949e', fontWeight: 900,
+                    }}>
+                    {playingAgain ? 'Starting…' : isHost ? 'Play Again' : 'Waiting for host'}
                   </Button>
-                )}
+                  <Button onClick={requestLeave} variant="outlined"
+                    sx={{ color: '#ef6b6b', borderColor: 'rgba(239,107,107,0.4)' }}>
+                    Leave
+                  </Button>
+                </Box>
               </Box>
             )}
           </Box>
@@ -392,114 +395,6 @@ export function BoggleGame() {
           </Box>
         </Box>
       </Box>
-      <AnimatePresence>
-        {game.phase === 'finished' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 1200, display: 'grid', placeItems: 'center',
-              padding: 16, background: 'rgba(4,8,12,0.82)', backdropFilter: 'blur(8px)',
-            }}>
-            <motion.div initial={{ opacity: 0, y: 24, scale: 0.92 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ type: 'spring', stiffness: 240, damping: 20 }}
-              style={{ width: 'min(100%, 520px)', maxHeight: 'calc(100dvh - 32px)' }}>
-              <Box sx={{
-                p: { xs: 1.5, sm: 3.5 }, borderRadius: '22px', textAlign: 'center',
-                bgcolor: '#111a24', border: '1px solid rgba(6,214,160,0.35)',
-                boxShadow: '0 20px 80px rgba(0,0,0,0.5)',
-                maxHeight: 'calc(100dvh - 32px)', display: 'flex', flexDirection: 'column',
-              }}>
-                <motion.div initial={{ scale: 0.5, rotate: -12 }}
-                  animate={{ scale: [0.5, 1.15, 1], rotate: 0 }}
-                  transition={{ duration: 0.55 }}>
-                  <Typography sx={{ fontSize: '3rem', lineHeight: 1 }}>🏆</Typography>
-                </motion.div>
-                <Typography sx={{ mt: 1, color: ACCENT, fontSize: '1.5rem', fontWeight: 900 }}>
-                  Round complete!
-                </Typography>
-                <Typography sx={{ mb: 2, color: '#8b949e', fontSize: '0.8rem' }}>
-                  Final scores · unique words: 2 pts · shared words: 1 pt per finder
-                </Typography>
-                <Box sx={{
-                  display: 'grid', gap: 0.8, mb: 1.5, maxHeight: '14dvh',
-                  overflowY: 'auto', flexShrink: 0,
-                }}>
-                  {sortedPlayers.map((uid, index) => (
-                    <Box key={uid}>
-                      <Box sx={{
-                        display: 'flex', alignItems: 'center', gap: 1, p: 1,
-                        borderRadius: '10px',
-                        bgcolor: index === 0 ? 'rgba(6,214,160,0.12)' : 'rgba(255,255,255,0.04)',
-                      }}>
-                        <Typography sx={{ width: 24, color: index === 0 ? '#ffd166' : '#8b949e', fontWeight: 900 }}>
-                          {index + 1}.
-                        </Typography>
-                        <Typography sx={{ flex: 1, textAlign: 'left', fontWeight: 800 }}>
-                          {uid === userId ? 'You' : room.players?.[uid]?.name || 'Player'}
-                        </Typography>
-                        <Typography sx={{ color: ACCENT, fontWeight: 900 }}>
-                          {game.scores?.[uid] || 0} pts
-                        </Typography>
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-                <Typography sx={{ color: '#8ab4ff', fontWeight: 800, textAlign: 'left', mb: 0.75 }}>
-                  Words found
-                </Typography>
-                <Box sx={{
-                  display: 'grid', gap: 1, maxHeight: '18dvh', overflowY: 'auto',
-                  textAlign: 'left', mb: 1.5, flexShrink: 0,
-                }}>
-                  {sortedPlayers.map(uid => {
-                    const playerWords = wordsForPlayer(uid);
-                    return (
-                      <Box key={uid} sx={{
-                        p: 1, borderRadius: '10px', bgcolor: 'rgba(255,255,255,0.04)',
-                      }}>
-                        <Typography sx={{ fontSize: '0.8rem', fontWeight: 800, mb: 0.6 }}>
-                          {uid === userId ? 'You' : room.players?.[uid]?.name || 'Player'}
-                          <Typography component="span" sx={{ color: '#8b949e', fontSize: '0.72rem', ml: 0.75 }}>
-                            ({playerWords.length})
-                          </Typography>
-                        </Typography>
-                        {playerWords.length === 0 ? (
-                          <Typography sx={{ color: '#687582', fontSize: '0.75rem' }}>No words found</Typography>
-                        ) : (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6 }}>
-                            {playerWords.map(({ word, shared }) => (
-                              <Chip key={word} size="small"
-                                label={`${word.toUpperCase()}${shared ? ' · shared' : ''}`}
-                                sx={{
-                                  height: 24, fontSize: '0.68rem',
-                                  color: shared ? '#8b949e' : '#e6edf3',
-                                  bgcolor: shared ? 'rgba(255,255,255,0.06)' : 'rgba(6,214,160,0.12)',
-                                }} />
-                            ))}
-                          </Box>
-                        )}
-                      </Box>
-                    );
-                  })}
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-                  <Button onClick={handlePlayAgain} disabled={!isHost || playingAgain} startIcon={<ReplayIcon />}
-                    variant="contained" sx={{
-                      bgcolor: isHost ? ACCENT : 'rgba(255,255,255,0.12)',
-                      color: isHost ? '#06261d' : '#8b949e', fontWeight: 900,
-                    }}>
-                    {playingAgain ? 'Starting…' : isHost ? 'Play Again' : 'Waiting for host'}
-                  </Button>
-                  <Button onClick={requestLeave} variant="outlined"
-                    sx={{ color: '#ef6b6b', borderColor: 'rgba(239,107,107,0.4)' }}>
-                    Leave
-                  </Button>
-                </Box>
-              </Box>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       <LeaveConfirmModal open={confirmOpen} onCancel={cancelLeave} onConfirm={confirmLeave} />
     </Box>
   );
