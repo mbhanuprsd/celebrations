@@ -3,6 +3,7 @@ import { GameEngine } from '../../core/GameEngine';
 import { initQuizGame } from './quizFirebaseService';
 import { generateQuizQuestions } from './quizGroqService';
 import { QUIZ_SETTINGS } from './quizConstants';
+import { loadQuizAnswerKey } from './quizAnswerKey';
 
 export class QuizGameEngine extends GameEngine {
   static get name() { return 'Quiz'; }
@@ -22,15 +23,22 @@ export class QuizGameEngine extends GameEngine {
     const count = this.room.settings?.questionCount || QUIZ_SETTINGS.questionCount;
 
     // Use pre-generated questions from Lobby if available (instant start, no extra API call)
-    let questions = this.room.quizQuestions;
+    let questions;
+    const publicQuestions = this.room.quizQuestions;
+    const answerKey = loadQuizAnswerKey(this.roomId, publicQuestions);
 
-    if (!questions?.length) {
+    if (publicQuestions?.length && answerKey?.length === publicQuestions.length) {
+      questions = publicQuestions.map((question, index) => ({
+        ...question,
+        correctIndex: answerKey[index],
+      }));
+    } else if (publicQuestions?.some(question => Number.isInteger(question.correctIndex))) {
+      questions = publicQuestions;
+    } else {
       // Fallback: generate now (e.g. if lobby pre-gen failed or was skipped)
-      console.info('No pre-generated questions found — generating now…');
+      console.info('No local answer key found — generating a fresh quiz for the host.');
       const apiKey = process.env.REACT_APP_GROQ_API_KEY;
       questions = await generateQuizQuestions(topic, count, apiKey);
-    } else {
-      console.info(`✅ Using ${questions.length} pre-generated questions from lobby.`);
     }
 
     // Initialize the game with the questions

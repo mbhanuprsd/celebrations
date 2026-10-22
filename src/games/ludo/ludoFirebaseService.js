@@ -3,7 +3,8 @@ import { doc, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   COLOR_ORDER, TOTAL_STEPS,
-  assignColors, getMainPathIndex, canCapture
+  assignColors, getMainPathIndex, canCapture, getPieceDestination,
+  getMovablePieceIds, getNextLudoColor,
 } from './ludoConstants';
 import { sendSystemMessage, safeUpdateDoc } from '../../firebase/services';
 
@@ -19,6 +20,10 @@ function makePieces() {
 }
 
 export async function initLudoGame(roomId, playerIds) {
+  if (!Array.isArray(playerIds) || playerIds.length < 2 || playerIds.length > COLOR_ORDER.length ||
+      new Set(playerIds).size !== playerIds.length) {
+    throw new Error('Ludo requires 2–4 unique players.');
+  }
   const colorMap = assignColors(playerIds);   // { uid: 'red', ... }
   const activeColors = playerIds.map(id => colorMap[id]);
 
@@ -57,18 +62,28 @@ export async function rollDice(roomId, userId) {
   let result = {};
 
   await runTransaction(db, async (tx) => {
-    const snap = await tx.get(doc(db, 'rooms', roomId));
+    const roomRef = doc(db, 'rooms', roomId);
+    const snap = await tx.get(roomRef);
+    if (!snap.exists()) { result = { error: 'Room no longer exists.' }; return; }
     const room = snap.data();
-    const ls = room.ludoState;
+    const ls = room?.ludoState;
+    if (room.status !== 'playing' || !ls) {
+      result = { error: 'The Ludo game is not active.' };
+      return;
+    }
 
-    const myColor = ls.colorMap[userId];
+    const myColor = ls.colorMap?.[userId];
+    if (!myColor || !ls.activeColors?.includes(myColor)) {
+      result = { error: 'You are not part of this game.' };
+      return;
+    }
     if (ls.currentTurn !== myColor) { result = { error: 'Not your turn' }; return; }
     if (ls.diceRolled)              { result = { error: 'Already rolled' }; return; }
     if (ls.winner)                  { result = { error: 'Game over' };      return; }
 
     const value = Math.floor(Math.random() * 6) + 1;
 
-    const movable = getMovablePieceIds(myColor, ls.pieces[myColor], value);
+    const movable = getMovablePieceIds(ls.pieces?.[myColor], value);
     const noMoves = movable.length === 0;
 
     const newConsecSixes = value === 6 ? ls.consecutiveSixes + 1 : 0;
@@ -81,14 +96,18 @@ export async function rollDice(roomId, userId) {
     };
 
     if (noMoves || forcedSkip) {
-      const nextColor = getNextColor(myColor, ls.activeColors);
+      const nextColor = getNextLudoColor(myColor, ls.activeColors);
+      if (!nextColor) {
+        result = { error: 'Invalid Ludo turn order.' };
+        return;
+      }
       updates['ludoState.currentTurn'] = nextColor;
       updates['ludoState.diceValue']   = null;
       updates['ludoState.diceRolled']  = false;
       updates['ludoState.consecutiveSixes'] = 0;
     }
 
-    tx.update(doc(db, 'rooms', roomId), updates);
+    tx.update(roomRef, updates);
     // Return both result and color to avoid extra getDoc after transaction
     result = { value, movable, noMoves, forcedSkip, color: myColor };
   });
@@ -116,26 +135,43 @@ export async function movePiece(roomId, userId, pieceId) {
   await runTransaction(db, async (tx) => {
     postMoveMessages = [];
 
-    const snap = await tx.get(doc(db, 'rooms', roomId));
+    const roomRef = doc(db, 'rooms', roomId);
+    const snap = await tx.get(roomRef);
+    if (!snap.exists()) { result = { error: 'Room no longer exists.' }; return; }
     const room = snap.data();
-    const ls = room.ludoState;
+    const ls = room?.ludoState;
+    if (room.status !== 'playing' || !ls) {
+      result = { error: 'The Ludo game is not active.' };
+      return;
+    }
 
-    const myColor = ls.colorMap[userId];
+    const myColor = ls.colorMap?.[userId];
+    if (!myColor || !ls.activeColors?.includes(myColor)) {
+      result = { error: 'You are not part of this game.' };
+      return;
+    }
+    if (ls.winner)                  { result = { error: 'Game over' }; return; }
     if (ls.currentTurn !== myColor) { result = { error: 'Not your turn' }; return; }
     if (!ls.diceRolled)             { result = { error: 'Roll dice first' }; return; }
 
-    const piece = ls.pieces[myColor].find(p => p.id === pieceId);
+    const piece = ls.pieces?.[myColor]?.find(p => p.id === pieceId);
     if (!piece) { result = { error: 'Invalid piece' }; return; }
 
     const diceValue = ls.diceValue;
-
-    if (piece.step === -1 && diceValue !== 6) { result = { error: 'Need 6 to enter' }; return; }
-    if (piece.step === TOTAL_STEPS)           { result = { error: 'Piece already won' }; return; }
-
     const fromStep = piece.step;
-    const toStep = piece.step === -1 ? 0 : Math.min(piece.step + diceValue, TOTAL_STEPS);
-
-    if (toStep > TOTAL_STEPS) { result = { error: 'Overshoots center' }; return; }
+    const toStep = getPieceDestination(fromStep, diceValue);
+    if (fromStep === -1 && diceValue !== 6) {
+      result = { error: 'Need 6 to enter' };
+      return;
+    }
+    if (fromStep >= TOTAL_STEPS) {
+      result = { error: 'Piece already won' };
+      return;
+    }
+    if (toStep === null) {
+      result = { error: 'Overshoots center or invalid move.' };
+      return;
+    }
 
     const newPieces = { ...ls.pieces };
     newPieces[myColor] = newPieces[myColor].map(p =>
@@ -194,12 +230,16 @@ export async function movePiece(roomId, userId, pieceId) {
         updates['status']              = 'finished';
       }
     } else if (!getAnotherTurn) {
-      const nextColor = getNextColor(myColor, ls.activeColors);
+      const nextColor = getNextLudoColor(myColor, ls.activeColors);
+      if (!nextColor) {
+        result = { error: 'Invalid Ludo turn order.' };
+        return;
+      }
       updates['ludoState.currentTurn'] = nextColor;
       updates['ludoState.consecutiveSixes'] = 0;
     }
 
-    tx.update(doc(db, 'rooms', roomId), updates);
+    tx.update(roomRef, updates);
 
     // Queue messages to send after transaction commits
     if (captureMsg)         postMoveMessages.push(captureMsg);
@@ -219,22 +259,6 @@ export async function movePiece(roomId, userId, pieceId) {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
-
-export function getMovablePieceIds(color, pieces, diceValue) {
-  return pieces
-    .filter(p => {
-      if (p.step >= TOTAL_STEPS) return false;
-      if (p.step === -1) return diceValue === 6;
-      const newStep = p.step + diceValue;
-      return newStep <= TOTAL_STEPS;
-    })
-    .map(p => p.id);
-}
-
-function getNextColor(current, activeColors) {
-  const idx = activeColors.indexOf(current);
-  return activeColors[(idx + 1) % activeColors.length];
-}
 
 // ─── Reset Ludo ────────────────────────────────────────────────────────────
 // FIX: explicitly clear winnerUid and rankings so stale data never leaks

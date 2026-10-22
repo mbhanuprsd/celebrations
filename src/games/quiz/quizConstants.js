@@ -27,3 +27,31 @@ export const QUIZ_SETTINGS = {
 export const POINTS_PER_SECOND = Math.floor(QUIZ_SETTINGS.maxScore / QUIZ_SETTINGS.answerTime);
 export const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 export const OPTION_COLORS = ['#3A86FF', '#FF006E', '#FB5607', '#06D6A0'];
+
+export function toPublicQuizQuestions(questions) {
+  return questions.map(({ question, options, resource }) => ({
+    question,
+    options,
+    resource: resource || '',
+  }));
+}
+
+export function getQuizAnswerResult(optionIndex, correctIndex, submittedAt, startedAt) {
+  if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex > 3 ||
+      !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3 ||
+      !Number.isFinite(submittedAt) || !Number.isFinite(startedAt)) {
+    return { correct: false, score: 0, late: true };
+  }
+
+  const elapsed = Math.max(0, (submittedAt - startedAt) / 1000);
+  if (elapsed > QUIZ_SETTINGS.answerTime) return { correct: false, score: 0, late: true };
+
+  const correct = optionIndex === correctIndex;
+  const score = correct
+    ? Math.min(QUIZ_SETTINGS.maxScore, Math.max(
+      50,
+      QUIZ_SETTINGS.maxScore - Math.floor(elapsed * POINTS_PER_SECOND)
+    ))
+    : 0;
+  return { correct, score, late: false };
+}

@@ -17,6 +17,7 @@ import { OfflineBanner, LeaveConfirmModal } from '../../components/GameSharedUI'
 import {
   submitQuizAnswer, revealQuizAnswer, advanceQuizQuestion, resetQuizGame,
 } from './quizFirebaseService';
+import { loadQuizAnswerKey } from './quizAnswerKey';
 import { generateQuizQuestions } from './quizGroqService';
 import {
   OPTION_LABELS, OPTION_COLORS, QUIZ_SETTINGS, TOPIC_MAP,
@@ -232,6 +233,8 @@ export function QuizGame() {
   const [scoreOpen, setScoreOpen] = useState(false);
   const timerRef  = useRef(null);
   const revealRef = useRef(null);  // prevent double-fire on reveal/advance
+  const revealRetryCountRef = useRef(0);
+  const quizSavedRef = useRef(false);
 
   // ── Countdown timer ───────────────────────────────────────────────────
   useEffect(() => {
@@ -271,13 +274,28 @@ export function QuizGame() {
     const timedOut = (Date.now() - cur.questionStartTime) / 1000 >= QUIZ_SETTINGS.answerTime;
     if ((allAnswered || timedOut) && !revealRef.current) {
       revealRef.current = true;
-      await revealQuizAnswer(roomId);
+      try {
+        const answerKey = loadQuizAnswerKey(roomId, cur.questions);
+        if (!answerKey || answerKey.length !== cur.questions?.length) {
+          throw new Error('The host quiz answer key is unavailable. Please restart the quiz.');
+        }
+        const revealed = await revealQuizAnswer(roomId, answerKey[cur.currentIndex], cur.currentIndex);
+        if (!revealed) revealRef.current = false;
+      } catch (error) {
+        revealRef.current = false;
+        notify(error.message || 'Could not reveal the answer.', 'error');
+        if (revealRetryCountRef.current < 3) {
+          revealRetryCountRef.current += 1;
+          setTimeout(() => checkAdvance(), 1000);
+        }
+      }
     }
   }, [isHost, roomId]);
 
   // Reset revealRef only when the question index changes
   useEffect(() => {
     revealRef.current = false;
+    revealRetryCountRef.current = 0;
   }, [q?.currentIndex]);
 
   // FIX: react to answer changes directly instead of 500 ms polling
@@ -306,7 +324,10 @@ export function QuizGame() {
   }, [q, q?.currentIndex, q?.phase, isHost, roomId]);
 
   // ── Save game history once when quiz finishes ─────────────────────────
-  const quizSavedRef = useRef(false);
+  useEffect(() => {
+    if (q?.phase === 'question' && q.currentIndex === 0) quizSavedRef.current = false;
+  }, [q?.phase, q?.currentIndex]);
+
   useEffect(() => {
     if (!q || q.phase !== 'finished' || !userId || !room || quizSavedRef.current) return;
     quizSavedRef.current = true;
@@ -332,11 +353,14 @@ export function QuizGame() {
   const handleAnswer = useCallback(async (idx) => {
     const cur = qRef.current;
     if (!cur || cur.phase !== 'question' || cur.answers?.[userId]) return;
-    await submitQuizAnswer(roomId, userId, idx).catch(e => {
+    try {
+      const result = await submitQuizAnswer(roomId, userId, idx);
+      if (result?.error) notify(result.error);
+    } catch (e) {
       console.error(e);
       // FIX: surface errors to the player instead of swallowing silently
       notify('Failed to submit answer — please try again.', 'error');
-    });
+    }
   }, [roomId, userId, notify]);
 
   // ── Play Again ────────────────────────────────────────────────────────
@@ -454,7 +478,7 @@ export function QuizGame() {
                     label={OPTION_LABELS[idx]} text={opt} index={idx}
                     phase={q.phase}
                     myAnswer={q.answers?.[userId]}
-                    correctIndex={q.phase === 'reveal' ? q.correctAnswers?.[q.currentIndex] : -1}
+                    correctIndex={q.phase === 'reveal' ? q.revealedCorrectIndex : -1}
                     allAnswers={q.answers}
                     playerCount={total}
                     disabled={!!q.answers?.[userId] || q.phase !== 'question'}

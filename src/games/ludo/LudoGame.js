@@ -287,7 +287,10 @@ export function LudoGame() {
   const handleRoll = useCallback(async () => {
     if (actionPending) return;
     setActionPending(true);
-    try { await rollDice(roomId, userId); }
+    try {
+      const result = await rollDice(roomId, userId);
+      if (result.error) notify(result.error);
+    }
     catch (e) {
       console.error(e);
       // FIX: surface errors to the player
@@ -299,7 +302,10 @@ export function LudoGame() {
   const handleMovePiece = useCallback(async (pieceId) => {
     if (actionPending || !isMyTurn || !ls?.diceRolled) return;
     setActionPending(true);
-    try { await movePiece(roomId, userId, pieceId); }
+    try {
+      const result = await movePiece(roomId, userId, pieceId);
+      if (result.error) notify(result.error);
+    }
     catch (e) {
       console.error(e);
       // FIX: surface errors to the player

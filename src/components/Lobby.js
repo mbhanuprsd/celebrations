@@ -27,6 +27,8 @@ import { QuizGameEngine } from '../games/quiz/QuizGameEngine';
 import { BoggleGameEngine } from '../games/boggle/BoggleGameEngine';
 import { GAME_META } from '../core/GameEngine';
 import { generateQuizQuestions } from '../games/quiz/quizGroqService';
+import { storeQuizAnswerKey } from '../games/quiz/quizAnswerKey';
+import { toPublicQuizQuestions } from '../games/quiz/quizConstants';
 import { safeUpdateDoc } from '../firebase/services';
 import { doc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -128,6 +130,21 @@ export function Lobby() {
 
     // Already have questions stored in the room
     if (room.quizQuestions?.length) {
+      if (room.quizQuestions.some(question => Number.isInteger(question.correctIndex))) {
+        try {
+          storeQuizAnswerKey(state.roomId, room.quizQuestions);
+        } catch (error) {
+          console.error('Could not migrate the quiz answer key:', error);
+          setGenStatus('error');
+          genDoneRef.current = false;
+          return;
+        }
+        safeUpdateDoc(doc(db, 'rooms', state.roomId), {
+          quizQuestions: toPublicQuizQuestions(room.quizQuestions),
+        }).catch(error => {
+          console.error('Could not remove answer keys from cached quiz questions:', error);
+        });
+      }
       setGenStatus(room.quizQuestions._source === 'fallback' ? 'fallback' : 'done');
       setGenCount(room.quizQuestions.length);
       genDoneRef.current = true;
@@ -145,13 +162,14 @@ export function Lobby() {
         const apiKey = process.env.REACT_APP_GROQ_API_KEY;
 
         const questions = await generateQuizQuestions(topic, count, apiKey);
+        storeQuizAnswerKey(state.roomId, questions);
 
         // Detect whether Groq or fallback was used (Groq questions won't have _source)
         const isFallback = !apiKey || questions._source === 'fallback';
 
-        // Store questions in room so all players + Start Game can access them instantly
+        // Keep the answer key in the host session; only public question data is shared.
         await safeUpdateDoc(doc(db, 'rooms', state.roomId), {
-          quizQuestions: questions,
+          quizQuestions: toPublicQuizQuestions(questions),
         });
 
         setGenStatus(isFallback ? 'fallback' : 'done');

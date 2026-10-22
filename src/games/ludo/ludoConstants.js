@@ -122,6 +122,29 @@ export function canCapture(attackerColor, victimColor, mainPathIndex) {
   return true;
 }
 
+export function getPieceDestination(step, diceValue) {
+  if (!Number.isInteger(diceValue) || diceValue < 1 || diceValue > 6) return null;
+  if (!Number.isInteger(step) || step < -1 || step >= TOTAL_STEPS) return null;
+  if (step === -1) return diceValue === 6 ? 0 : null;
+
+  const destination = step + diceValue;
+  return destination <= TOTAL_STEPS ? destination : null;
+}
+
+export function getMovablePieceIds(pieces, diceValue) {
+  if (!Array.isArray(pieces)) return [];
+  return pieces
+    .filter(piece => getPieceDestination(piece.step, diceValue) !== null)
+    .map(piece => piece.id);
+}
+
+export function getNextLudoColor(current, activeColors) {
+  if (!Array.isArray(activeColors) || activeColors.length === 0) return null;
+  const index = activeColors.indexOf(current);
+  if (index < 0) return null;
+  return activeColors[(index + 1) % activeColors.length];
+}
+
 // Color assigned per join order (max 4 players)
 export function assignColors(playerIds) {
   const map = {};

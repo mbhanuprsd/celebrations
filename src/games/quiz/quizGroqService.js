@@ -85,12 +85,12 @@ correctIndex is the 0-based index of the correct option.`;
 
   return parsed
     .filter(q => q.question && Array.isArray(q.options) && q.options.length === 4
-                 && typeof q.correctIndex === 'number')
+                 && Number.isInteger(q.correctIndex) && q.correctIndex >= 0 && q.correctIndex < 4)
     .slice(0, count)
     .map(q => ({
       question:     q.question,
       options:      q.options.map(String),
-      correctIndex: Math.min(3, Math.max(0, q.correctIndex)),
+      correctIndex: q.correctIndex,
       resource:     q.resource || '',
     }));
 }

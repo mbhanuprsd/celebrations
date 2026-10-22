@@ -3,10 +3,9 @@ import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   CELL_SIZE, BOARD_SIZE, LUDO_COLORS, COLOR_ORDER,
-  HOME_STRETCH_CELLS, SAFE_CELLS, MAIN_PATH,
+  HOME_STRETCH_CELLS, SAFE_CELLS, MAIN_PATH, getMovablePieceIds,
   getPieceCoord, HOME_BASE_COORDS,
 } from './ludoConstants';
-import { getMovablePieceIds } from './ludoFirebaseService';
 
 const S = CELL_SIZE; // 40px
 
@@ -323,7 +322,7 @@ export function LudoBoard({ ludoState, userId, onMovePiece }) {
 
   const movablePieceIds = useMemo(() => {
     if (!isMyTurn || !diceRolled || !myColor) return new Set();
-    return new Set(getMovablePieceIds(myColor, pieces[myColor], diceValue));
+    return new Set(getMovablePieceIds(pieces[myColor], diceValue));
   }, [isMyTurn, diceRolled, myColor, pieces, diceValue]);
 
   const piecesByPosition = useMemo(() => {

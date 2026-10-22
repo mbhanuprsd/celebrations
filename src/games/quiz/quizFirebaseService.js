@@ -1,26 +1,24 @@
 // src/games/quiz/quizFirebaseService.js
-import { doc, getDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { deleteField, doc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { safeUpdateDoc, sendSystemMessage } from '../../firebase/services';
-import { QUIZ_SETTINGS, POINTS_PER_SECOND } from './quizConstants';
+import { getQuizAnswerResult, QUIZ_SETTINGS, toPublicQuizQuestions } from './quizConstants';
+import { storeQuizAnswerKey } from './quizAnswerKey';
 
 export async function initQuizGame(roomId, playerOrder, questions, topic) {
+  if (!Array.isArray(playerOrder) || playerOrder.length < QUIZ_SETTINGS.minPlayers ||
+      !Array.isArray(questions) || questions.length === 0) {
+    throw new Error('Quiz requires players and at least one valid question.');
+  }
+  storeQuizAnswerKey(roomId, questions);
   const scores = {};
   playerOrder.forEach(uid => { scores[uid] = 0; });
 
-  // SECURITY: Separate the correct answers from the questions sent to clients.
-  // We store a 'publicQuestions' list (without correctIndex) and a 'correctAnswers' list.
-  const publicQuestions = questions.map(({ question, options, resource }) => ({
-    question,
-    options,
-    resource,
-  }));
-  const correctAnswers = questions.map(q => q.correctIndex);
+  const publicQuestions = toPublicQuizQuestions(questions);
 
   const quizState = {
     playerOrder,
     questions: publicQuestions,
-    correctAnswers,
     topic,
     currentIndex: 0,
     phase: 'question',
@@ -31,102 +29,146 @@ export async function initQuizGame(roomId, playerOrder, questions, topic) {
     winner: null,
   };
 
-  await safeUpdateDoc(doc(db, 'rooms', roomId), { status: 'playing', quizState });
+  await safeUpdateDoc(doc(db, 'rooms', roomId), {
+    status: 'playing',
+    quizState,
+    quizQuestions: publicQuestions,
+  });
   await sendSystemMessage(roomId, `🧠 Quiz started! Topic: ${topic}. ${questions.length} questions!`);
 }
 
-/** Called when a player submits their answer.
- *  Uses increment() for the score to avoid read-then-write race conditions
- *  when multiple players answer at the same instant. */
+/** Records one answer per player and question. The host scores answers at reveal time. */
 export async function submitQuizAnswer(roomId, userId, optionIndex) {
-  const snap = await getDoc(doc(db, 'rooms', roomId));
-  const q = snap.data()?.quizState;
-  if (!q || q.phase !== 'question') return;
-  if (q.answers?.[userId]) return;  // already answered
-
-  // Use server-side start time when available; fall back to millis field.
-  const startMillis = q.questionStartServerTime?.toMillis?.()
-    ?? q.questionStartTime;
-  const elapsed = (Date.now() - startMillis) / 1000;
-  
-  // SECURITY: Use the separated correctAnswers array instead of the public questions list.
-  const correctIndex = q.correctAnswers?.[q.currentIndex];
-  const isCorrect = optionIndex === correctIndex;
-  
-  const score = isCorrect
-    ? Math.max(50, QUIZ_SETTINGS.maxScore - Math.floor(elapsed * POINTS_PER_SECOND))
-    : 0;
-
-  const update = {
-    [`quizState.answers.${userId}`]: {
-      optionIndex,
-      timestamp: Date.now(),
-      score,
-      correct: isCorrect,
-    },
-  };
-
-  // Use increment() so concurrent writes don't overwrite each other
-  if (isCorrect) {
-    update[`quizState.scores.${userId}`] = increment(score);
+  if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex > 3) {
+    return { error: 'Choose a valid answer.' };
   }
-
-  await safeUpdateDoc(doc(db, 'rooms', roomId), update);
-}
-
-/** Moves to reveal phase — host triggers this when all answered or time runs out */
-export async function revealQuizAnswer(roomId) {
-  await safeUpdateDoc(doc(db, 'rooms', roomId), {
-    'quizState.phase': 'reveal',
-  });
-}
-
-/** Advances to next question, or ends the game after the last one.
- *  FIX: guard against phase === 'finished' so a host reconnect / retry
- *  cannot re-run winner determination with a stale snapshot. */
-export async function advanceQuizQuestion(roomId) {
-  const snap = await getDoc(doc(db, 'rooms', roomId));
-  const data = snap.data();
-  const q = data?.quizState;
-  // FIX: bail out if already finished — makes the function idempotent.
-  if (!q || q.phase === 'finished') return;
-
-  const nextIndex = q.currentIndex + 1;
-
-  if (nextIndex >= q.questions.length) {
-    // Game over — determine winner from scores already in snapshot
-    let maxScore = -1;
-    let winner = q.playerOrder[0];
-    for (const uid of q.playerOrder) {
-      if ((q.scores[uid] || 0) > maxScore) {
-        maxScore = q.scores[uid] || 0;
-        winner = uid;
-      }
+  let result = { error: 'The question is no longer accepting answers.' };
+  await runTransaction(db, async transaction => {
+    const roomRef = doc(db, 'rooms', roomId);
+    const snapshot = await transaction.get(roomRef);
+    const room = snapshot.data();
+    const q = room?.quizState;
+    if (!snapshot.exists() || room.status !== 'playing' || !q || q.phase !== 'question') return;
+    if (!q.playerOrder?.includes(userId)) {
+      result = { error: 'You are not a player in this quiz.' };
+      return;
+    }
+    if (q.answers?.[userId]) {
+      result = { error: 'You already answered this question.' };
+      return;
+    }
+    if (!Number.isInteger(q.currentIndex) || !q.questions?.[q.currentIndex]) {
+      result = { error: 'The current question is invalid.' };
+      return;
+    }
+    if (Date.now() > q.questionStartTime + QUIZ_SETTINGS.answerTime * 1000) {
+      result = { error: 'Time is up for this question.' };
+      return;
     }
 
-    const winnerName = data?.players?.[winner]?.name || 'Someone';
-
-    await safeUpdateDoc(doc(db, 'rooms', roomId), {
-      'quizState.phase': 'finished',
-      'quizState.winner': winner,
+    transaction.update(roomRef, {
+      [`quizState.answers.${userId}`]: {
+        optionIndex,
+        questionIndex: q.currentIndex,
+        submittedAt: serverTimestamp(),
+      },
     });
-    await sendSystemMessage(roomId, `🏆 ${winnerName} wins with ${maxScore} points!`);
-    return;
-  }
-
-  await safeUpdateDoc(doc(db, 'rooms', roomId), {
-    'quizState.currentIndex': nextIndex,
-    'quizState.phase': 'question',
-    'quizState.answers': {},
-    'quizState.questionStartTime': Date.now(),
-    'quizState.questionStartServerTime': serverTimestamp(),
+    result = { accepted: true };
   });
+  return result;
+}
+
+/** Scores submitted answers and reveals the answer in one atomic transition. */
+export async function revealQuizAnswer(roomId, correctIndex, expectedIndex) {
+  let revealed = false;
+  await runTransaction(db, async transaction => {
+    revealed = false;
+    const roomRef = doc(db, 'rooms', roomId);
+    const snapshot = await transaction.get(roomRef);
+    const room = snapshot.data();
+    const q = room?.quizState;
+    if (!snapshot.exists() || room.status !== 'playing' || !q || q.phase !== 'question') return;
+    if (q.currentIndex !== expectedIndex) return;
+    if (!Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3 ||
+        !q.questions?.[q.currentIndex]) {
+      throw new Error('The answer key for this question is unavailable.');
+    }
+
+    const allAnswered = q.playerOrder.every(uid => q.answers?.[uid]);
+    const timedOut = Date.now() >= q.questionStartTime + QUIZ_SETTINGS.answerTime * 1000;
+    if (!allAnswered && !timedOut) return;
+
+    const startMillis = q.questionStartServerTime?.toMillis?.() ?? q.questionStartTime;
+    const answers = { ...(q.answers || {}) };
+    const scores = { ...(q.scores || {}) };
+    q.playerOrder.forEach(uid => {
+      const answer = answers[uid];
+      if (!answer) return;
+      const submittedAt = answer.submittedAt?.toMillis?.() ?? answer.timestamp;
+      const result = getQuizAnswerResult(
+        answer.optionIndex,
+        correctIndex,
+        submittedAt,
+        startMillis
+      );
+      answers[uid] = {
+        ...answer,
+        correct: result.correct,
+        late: result.late,
+        score: result.score,
+      };
+      scores[uid] = (scores[uid] || 0) + result.score;
+    });
+
+    transaction.update(roomRef, {
+      'quizState.answers': answers,
+      'quizState.scores': scores,
+      'quizState.revealedCorrectIndex': correctIndex,
+      'quizState.phase': 'reveal',
+    });
+    revealed = true;
+  });
+  return revealed;
+}
+
+/** Advances only from reveal, preventing stale timers from skipping questions. */
+export async function advanceQuizQuestion(roomId) {
+  let finishedMessage = null;
+  await runTransaction(db, async transaction => {
+    finishedMessage = null;
+    const roomRef = doc(db, 'rooms', roomId);
+    const snapshot = await transaction.get(roomRef);
+    const room = snapshot.data();
+    const q = room?.quizState;
+    if (!snapshot.exists() || room.status !== 'playing' || !q || q.phase !== 'reveal') return;
+
+    const nextIndex = q.currentIndex + 1;
+    if (nextIndex >= q.questions.length) {
+      const winner = q.playerOrder.reduce((currentWinner, uid) =>
+        (q.scores?.[uid] || 0) > (q.scores?.[currentWinner] || 0) ? uid : currentWinner,
+      q.playerOrder[0]);
+      const winnerName = room.players?.[winner]?.name || 'Someone';
+      const maxScore = q.scores?.[winner] || 0;
+      transaction.update(roomRef, {
+        'quizState.phase': 'finished',
+        'quizState.winner': winner,
+      });
+      finishedMessage = `🏆 ${winnerName} wins with ${maxScore} points!`;
+      return;
+    }
+
+    transaction.update(roomRef, {
+      'quizState.currentIndex': nextIndex,
+      'quizState.phase': 'question',
+      'quizState.answers': {},
+      'quizState.questionStartTime': Date.now(),
+      'quizState.questionStartServerTime': serverTimestamp(),
+      'quizState.revealedCorrectIndex': deleteField(),
+    });
+  });
+  if (finishedMessage) await sendSystemMessage(roomId, finishedMessage);
 }
 
 export async function resetQuizGame(roomId, playerOrder, questions, topic) {
-  // Update both quizState and the cached questions field so rematch always gets fresh questions
   await initQuizGame(roomId, playerOrder, questions, topic);
-  await safeUpdateDoc(doc(db, 'rooms', roomId), {
-    quizQuestions: questions,  // Refresh the cached questions field for future rematches
-  });
 }
