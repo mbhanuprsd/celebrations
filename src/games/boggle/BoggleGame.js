@@ -86,6 +86,13 @@ export function BoggleGame() {
   const sortedPlayers = [...players].sort(
     (a, b) => (game?.scores?.[b] || 0) - (game?.scores?.[a] || 0)
   );
+  const wordsByPlayer = useMemo(() => Object.fromEntries(players.map(uid => [
+    uid,
+    Object.entries(submissions)
+      .filter(([, foundBy]) => foundBy?.[uid])
+      .map(([word, foundBy]) => ({ word, shared: Object.keys(foundBy).length > 1 }))
+      .sort((a, b) => a.word.localeCompare(b.word)),
+  ])), [players, submissions]);
   const wordsFoundBy = uid => Object.values(submissions)
     .filter(foundBy => foundBy?.[uid]).length;
 
@@ -215,7 +222,10 @@ export function BoggleGame() {
   const seconds = String(timeLeft % 60).padStart(2, '0');
 
   return (
-    <Box sx={{ minHeight: '100dvh', bgcolor: '#080c12', color: '#e6edf3', p: { xs: 1.5, sm: 3 } }}>
+    <Box sx={{
+      height: '100dvh', overflowY: 'auto', boxSizing: 'border-box',
+      bgcolor: '#080c12', color: '#e6edf3', p: { xs: 1.5, sm: 3 },
+    }}>
       <OfflineBanner online={online} />
       <Box sx={{ maxWidth: 960, mx: 'auto' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1 }}>
@@ -332,9 +342,16 @@ export function BoggleGame() {
                 </Typography>
               </Box>
             ) : (
-              <Box sx={{ mt: 2, p: 2, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
-                <Typography sx={{ color: '#ffd166', fontWeight: 900, fontSize: '1.2rem' }}>Round complete!</Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+              <Box sx={{
+                position: 'sticky', bottom: 0, zIndex: 2, mt: 1.5, p: 1.5,
+                textAlign: 'center', bgcolor: '#111a24',
+                border: '1px solid rgba(6,214,160,0.3)', borderRadius: 2,
+                boxShadow: '0 -8px 24px rgba(8,12,18,0.8)',
+              }}>
+                <Typography sx={{ color: '#ffd166', fontWeight: 900, fontSize: '1.1rem' }}>
+                  Round complete!
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mt: 0.75, flexWrap: 'wrap' }}>
                   <Button onClick={handlePlayAgain} disabled={!isHost || playingAgain}
                     startIcon={<ReplayIcon />} variant="contained" sx={{
                       bgcolor: isHost ? ACCENT : 'rgba(255,255,255,0.12)',
@@ -374,10 +391,12 @@ export function BoggleGame() {
 
             <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)' }}>
               <Typography sx={{ fontWeight: 900, color: '#8ab4ff', mb: 1 }}>
-                Your words <Typography component="span" sx={{ color: '#8b949e', fontSize: '0.75rem' }}>({myWords.length})</Typography>
+                {game.phase === 'finished' ? 'Words by player' : 'Your words'}
               </Typography>
-              {myWords.length === 0 ? (
-                <Typography sx={{ color: '#687582', fontSize: '0.8rem' }}>Valid words you find will appear here.</Typography>
+              {game.phase === 'playing' && (myWords.length === 0 ? (
+                <Typography sx={{ color: '#687582', fontSize: '0.8rem' }}>
+                  Valid words you find will appear here.
+                </Typography>
               ) : (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.7 }}>
                   {myWords.map(entry => (
@@ -385,11 +404,46 @@ export function BoggleGame() {
                       sx={{ color: entry.shared ? '#8b949e' : '#e6edf3', bgcolor: entry.shared ? 'rgba(255,255,255,0.05)' : 'rgba(6,214,160,0.12)' }} />
                   ))}
                 </Box>
-              )}
+              ))}
               {game.phase === 'finished' && (
-                <Typography sx={{ color: '#8b949e', fontSize: '0.72rem', mt: 1 }}>
-                  Unique words earn 2 points. Words found by multiple players earn 1 point for each finder.
-                </Typography>
+                <>
+                  <Box sx={{ display: 'grid', gap: 1, maxHeight: 300, overflowY: 'auto' }}>
+                    {sortedPlayers.map(uid => (
+                      <Box key={uid} sx={{
+                        p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)',
+                      }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.6 }}>
+                          <Typography sx={{ fontSize: '0.8rem', fontWeight: 800 }}>
+                            {uid === userId ? 'You' : room.players?.[uid]?.name || 'Player'}
+                          </Typography>
+                          <Typography sx={{ color: '#ffd166', fontSize: '0.75rem', fontWeight: 900 }}>
+                            {game.scores?.[uid] || 0} pts
+                          </Typography>
+                        </Box>
+                        {(wordsByPlayer[uid] || []).length === 0 ? (
+                          <Typography sx={{ color: '#687582', fontSize: '0.75rem' }}>
+                            No words found
+                          </Typography>
+                        ) : (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6 }}>
+                            {wordsByPlayer[uid].map(({ word, shared }) => (
+                              <Chip key={word} size="small"
+                                label={`${word.toUpperCase()}${shared ? ' · shared' : ''}`}
+                                sx={{
+                                  height: 24, fontSize: '0.68rem',
+                                  color: shared ? '#8b949e' : '#e6edf3',
+                                  bgcolor: shared ? 'rgba(255,255,255,0.06)' : 'rgba(6,214,160,0.12)',
+                                }} />
+                            ))}
+                          </Box>
+                        )}
+                      </Box>
+                    ))}
+                  </Box>
+                  <Typography sx={{ color: '#8b949e', fontSize: '0.72rem', mt: 1 }}>
+                    Unique words earn 2 points. Shared words earn 1 point per finder.
+                  </Typography>
+                </>
               )}
             </Box>
           </Box>
