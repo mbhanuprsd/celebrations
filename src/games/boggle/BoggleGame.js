@@ -8,7 +8,14 @@ import { useRoom } from '../../hooks/useRoom';
 import { useGameGuard } from '../../hooks/useGameSession';
 import { LeaveConfirmModal, OfflineBanner } from '../../components/GameSharedUI';
 import { loadBoggleDictionary, submitBoggleWord, finishBoggleRound, initBoggleGame } from './boggleFirebaseService';
-import { extendBogglePath, getWordScore, isWordOnBoard } from './boggleConstants';
+import {
+  extendBogglePath,
+  getBoggleCellAtPoint,
+  getBogglePathSegment,
+  findLongestBoggleWords,
+  getWordScore,
+  isWordOnBoard,
+} from './boggleConstants';
 
 const ACCENT = '#06D6A0';
 
@@ -34,6 +41,8 @@ export function BoggleGame() {
   const boardRef = useRef(null);
   const pathRef = useRef([]);
   const pointerIdRef = useRef(null);
+  const cellCentersRef = useRef([]);
+  const boardBoundsRef = useRef(null);
   const feedbackTimerRef = useRef(null);
 
   useEffect(() => {
@@ -93,6 +102,10 @@ export function BoggleGame() {
       .map(([word, foundBy]) => ({ word, shared: Object.keys(foundBy).length > 1 }))
       .sort((a, b) => a.word.localeCompare(b.word)),
   ])), [players, submissions]);
+  const longestWords = useMemo(() => {
+    if (game?.phase !== 'finished' || !dictionary) return [];
+    return findLongestBoggleWords(game.board, dictionary, game.minWordLength);
+  }, [game?.board, game?.minWordLength, game?.phase, dictionary]);
   const wordsFoundBy = uid => Object.values(submissions)
     .filter(foundBy => foundBy?.[uid]).length;
 
@@ -158,12 +171,34 @@ export function BoggleGame() {
     }
   };
 
+  const refreshCellGeometry = board => {
+    const bounds = board.getBoundingClientRect();
+    boardBoundsRef.current = bounds;
+    cellCentersRef.current = [...board.querySelectorAll('[data-boggle-cell]')].map(cell => {
+      const rect = cell.getBoundingClientRect();
+      return {
+        index: Number(cell.dataset.boggleCell),
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    });
+  };
+
+  const findCellAtPoint = (x, y) => {
+    const bounds = boardBoundsRef.current;
+    if (!bounds || x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) {
+      return null;
+    }
+    return getBoggleCellAtPoint(cellCentersRef.current, x, y);
+  };
+
   const handlePointerDown = event => {
     const cell = event.target.closest('[data-boggle-cell]');
     if (!cell || !dictionary || submitting || timeLeft === 0 || game.phase !== 'playing') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
 
     event.preventDefault();
+    refreshCellGeometry(event.currentTarget);
     pointerIdRef.current = event.pointerId;
     pathRef.current = [];
     setSelectedPath([]);
@@ -172,10 +207,12 @@ export function BoggleGame() {
   };
 
   const handlePointerMove = event => {
-    if (pointerIdRef.current !== event.pointerId || !boardRef.current) return;
-    const cell = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-boggle-cell]');
-    if (!cell || !boardRef.current.contains(cell)) return;
-    updatePath(Number(cell.dataset.boggleCell));
+    if (pointerIdRef.current !== event.pointerId) return;
+    const nextIndex = findCellAtPoint(event.clientX, event.clientY);
+    if (nextIndex == null) return;
+
+    const lastIndex = pathRef.current[pathRef.current.length - 1];
+    getBogglePathSegment(lastIndex, nextIndex).forEach(updatePath);
   };
 
   const clearPointerPath = () => {
@@ -369,6 +406,36 @@ export function BoggleGame() {
           </Box>
 
           <Box sx={{ display: 'grid', gridTemplateRows: 'auto 1fr', gap: 1.5, minHeight: 260 }}>
+            {game.phase === 'finished' && (
+              <Box sx={{
+                p: 1.5, borderRadius: 2,
+                bgcolor: 'rgba(255,209,102,0.07)',
+                border: '1px solid rgba(255,209,102,0.22)',
+              }}>
+                <Typography sx={{ fontWeight: 900, color: '#ffd166', mb: 0.8 }}>
+                  Longest possible word
+                </Typography>
+                {!dictionary ? (
+                  <Typography sx={{ color: '#8b949e', fontSize: '0.8rem' }}>
+                    Word list unavailable.
+                  </Typography>
+                ) : longestWords.length === 0 ? (
+                  <Typography sx={{ color: '#8b949e', fontSize: '0.8rem' }}>
+                    No dictionary words found on this board.
+                  </Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, alignItems: 'center' }}>
+                    {longestWords.map(word => (
+                      <Chip key={word} size="small" label={word.toUpperCase()}
+                        sx={{ color: '#ffd166', bgcolor: 'rgba(255,209,102,0.12)', fontWeight: 900 }} />
+                    ))}
+                    <Typography sx={{ color: '#8b949e', fontSize: '0.72rem' }}>
+                      {longestWords[0].length} letters
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            )}
             <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)' }}>
               <Typography sx={{ fontWeight: 900, color: ACCENT, mb: 1 }}>Players</Typography>
               {sortedPlayers.map((uid, index) => (

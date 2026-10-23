@@ -59,6 +59,106 @@ export function extendBogglePath(path, nextIndex) {
   return [...path, nextIndex];
 }
 
+export function getBogglePathSegment(startIndex, endIndex) {
+  if (!Number.isInteger(startIndex) || !Number.isInteger(endIndex) ||
+      startIndex < 0 || startIndex >= 16 || endIndex < 0 || endIndex >= 16 ||
+      startIndex === endIndex) return [];
+
+  const startRow = Math.floor(startIndex / BOGGLE_BOARD_SIZE);
+  const startColumn = startIndex % BOGGLE_BOARD_SIZE;
+  const endRow = Math.floor(endIndex / BOGGLE_BOARD_SIZE);
+  const endColumn = endIndex % BOGGLE_BOARD_SIZE;
+  const columnDistance = Math.abs(endColumn - startColumn);
+  const rowDistance = -Math.abs(endRow - startRow);
+  const columnStep = startColumn < endColumn ? 1 : -1;
+  const rowStep = startRow < endRow ? 1 : -1;
+  let error = columnDistance + rowDistance;
+  let row = startRow;
+  let column = startColumn;
+  const segment = [];
+
+  while (row !== endRow || column !== endColumn) {
+    const doubledError = 2 * error;
+    if (doubledError >= rowDistance) {
+      error += rowDistance;
+      column += columnStep;
+    }
+    if (doubledError <= columnDistance) {
+      error += columnDistance;
+      row += rowStep;
+    }
+    segment.push(row * BOGGLE_BOARD_SIZE + column);
+  }
+
+  return segment;
+}
+
+export function getBoggleCellAtPoint(cellCenters, x, y) {
+  let nearestIndex = null;
+  let nearestDistance = Infinity;
+
+  cellCenters.forEach(({ index, x: centerX, y: centerY }) => {
+    const distance = (centerX - x) ** 2 + (centerY - y) ** 2;
+    if (distance < nearestDistance) {
+      nearestIndex = index;
+      nearestDistance = distance;
+    }
+  });
+
+  return nearestIndex;
+}
+
+export function findLongestBoggleWords(board, dictionary, minWordLength = 3) {
+  if (!Array.isArray(board) || board.length !== BOGGLE_BOARD_SIZE ** 2 ||
+      !(dictionary instanceof Set) || dictionary.size === 0) return [];
+
+  const prefixes = new Set();
+  dictionary.forEach(word => {
+    if (!/^[a-z]+$/.test(word) || word.length < minWordLength || word.length > board.length) return;
+    for (let length = 1; length <= word.length; length++) {
+      prefixes.add(word.slice(0, length));
+    }
+  });
+
+  let longestLength = 0;
+  const longestWords = new Set();
+
+  const search = (index, usedCells, currentWord) => {
+    const word = currentWord + board[index];
+    if (!prefixes.has(word)) return;
+
+    if (dictionary.has(word) && word.length >= minWordLength) {
+      if (word.length > longestLength) {
+        longestLength = word.length;
+        longestWords.clear();
+      }
+      if (word.length === longestLength) longestWords.add(word);
+    }
+
+    if (word.length === board.length) return;
+    const row = Math.floor(index / BOGGLE_BOARD_SIZE);
+    const column = index % BOGGLE_BOARD_SIZE;
+
+    for (let rowOffset = -1; rowOffset <= 1; rowOffset++) {
+      for (let columnOffset = -1; columnOffset <= 1; columnOffset++) {
+        if (rowOffset === 0 && columnOffset === 0) continue;
+        const nextRow = row + rowOffset;
+        const nextColumn = column + columnOffset;
+        if (nextRow < 0 || nextRow >= BOGGLE_BOARD_SIZE ||
+            nextColumn < 0 || nextColumn >= BOGGLE_BOARD_SIZE) continue;
+        const nextIndex = nextRow * BOGGLE_BOARD_SIZE + nextColumn;
+        const nextBit = 1 << nextIndex;
+        if ((usedCells & nextBit) === 0) {
+          search(nextIndex, usedCells | nextBit, word);
+        }
+      }
+    }
+  };
+
+  board.forEach((_, index) => search(index, 1 << index, ''));
+  return [...longestWords].sort((a, b) => a.localeCompare(b));
+}
+
 export function isWordOnBoard(word, board) {
   if (!/^[a-z]+$/.test(word) || !Array.isArray(board) || board.length !== 16) return false;
 
