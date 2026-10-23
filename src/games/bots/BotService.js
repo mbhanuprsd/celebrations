@@ -14,7 +14,7 @@ const BOT_COLORS = [
 ];
 
 // Games that support bot players
-export const BOT_SUPPORTED_GAMES = ['ludo', 'snakeladder', 'uno', 'minigolf', 'quiz'];
+export const BOT_SUPPORTED_GAMES = ['ludo', 'snakeladder', 'uno', 'minigolf', 'quiz', 'boggle'];
 
 export function isBotSupported(gameType) {
   return BOT_SUPPORTED_GAMES.includes(gameType);

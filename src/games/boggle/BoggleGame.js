@@ -7,17 +7,21 @@ import { useGameContext } from '../../context/GameContext';
 import { useRoom } from '../../hooks/useRoom';
 import { useGameGuard } from '../../hooks/useGameSession';
 import { LeaveConfirmModal, OfflineBanner } from '../../components/GameSharedUI';
+import { useBotTurns } from '../bots/useBotTurns';
 import { loadBoggleDictionary, submitBoggleWord, finishBoggleRound, initBoggleGame } from './boggleFirebaseService';
+import './BoggleGame.css';
 import {
   extendBogglePath,
   getBoggleCellAtPoint,
-  getBogglePathSegment,
+  getBoggleCellsAlongSegment,
   findLongestBoggleWords,
   getWordScore,
   isWordOnBoard,
 } from './boggleConstants';
 
 const ACCENT = '#06D6A0';
+const EMPTY_SUBMISSIONS = Object.freeze({});
+const EMPTY_PLAYER_ORDER = Object.freeze([]);
 
 export function BoggleGame() {
   const { state, notify } = useGameContext();
@@ -25,6 +29,7 @@ export function BoggleGame() {
   const { room, roomId, userId, isHost } = state;
   const notifyRef = useRef(notify);
   const game = room?.boggleState;
+  useBotTurns({ room, roomId, isHost, gameType: 'boggle' });
   const { online, confirmOpen, requestLeave, cancelLeave, confirmLeave } = useGameGuard({
     roomId, userId, gameType: 'boggle', leaveCallback: leave,
   });
@@ -43,6 +48,7 @@ export function BoggleGame() {
   const pointerIdRef = useRef(null);
   const cellCentersRef = useRef([]);
   const boardBoundsRef = useRef(null);
+  const lastPointerPositionRef = useRef(null);
   const feedbackTimerRef = useRef(null);
 
   useEffect(() => {
@@ -85,13 +91,13 @@ export function BoggleGame() {
     return () => clearInterval(timerId);
   }, [game?.endsAt, game?.phase, roomId]);
 
-  const submissions = game?.submissions || {};
+  const submissions = game?.submissions || EMPTY_SUBMISSIONS;
   const myWords = useMemo(() => Object.entries(submissions)
     .filter(([, foundBy]) => foundBy?.[userId])
     .map(([foundWord, foundBy]) => ({ word: foundWord, shared: Object.keys(foundBy).length > 1 }))
     .sort((a, b) => a.word.localeCompare(b.word)), [submissions, userId]);
 
-  const players = game?.playerOrder || [];
+  const players = game?.playerOrder || EMPTY_PLAYER_ORDER;
   const sortedPlayers = [...players].sort(
     (a, b) => (game?.scores?.[b] || 0) - (game?.scores?.[a] || 0)
   );
@@ -180,16 +186,10 @@ export function BoggleGame() {
         index: Number(cell.dataset.boggleCell),
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
+        width: rect.width,
+        height: rect.height,
       };
     });
-  };
-
-  const findCellAtPoint = (x, y) => {
-    const bounds = boardBoundsRef.current;
-    if (!bounds || x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) {
-      return null;
-    }
-    return getBoggleCellAtPoint(cellCentersRef.current, x, y);
   };
 
   const handlePointerDown = event => {
@@ -199,30 +199,60 @@ export function BoggleGame() {
 
     event.preventDefault();
     refreshCellGeometry(event.currentTarget);
+    const startingCell = getBoggleCellAtPoint(
+      cellCentersRef.current,
+      event.clientX,
+      event.clientY
+    );
+    if (startingCell == null) return;
+
     pointerIdRef.current = event.pointerId;
+    lastPointerPositionRef.current = { x: event.clientX, y: event.clientY };
     pathRef.current = [];
     setSelectedPath([]);
     event.currentTarget.setPointerCapture(event.pointerId);
-    updatePath(Number(cell.dataset.boggleCell));
+    updatePath(startingCell);
   };
 
   const handlePointerMove = event => {
     if (pointerIdRef.current !== event.pointerId) return;
-    const nextIndex = findCellAtPoint(event.clientX, event.clientY);
-    if (nextIndex == null) return;
+    let previousPosition = lastPointerPositionRef.current;
+    const nativeEvent = event.nativeEvent;
+    const pointerEvents = typeof nativeEvent.getCoalescedEvents === 'function'
+      ? nativeEvent.getCoalescedEvents()
+      : [nativeEvent];
+    const samples = [...pointerEvents];
+    const lastSample = samples[samples.length - 1];
+    if (!lastSample || lastSample.clientX !== nativeEvent.clientX ||
+        lastSample.clientY !== nativeEvent.clientY) {
+      samples.push(nativeEvent);
+    }
 
-    const lastIndex = pathRef.current[pathRef.current.length - 1];
-    getBogglePathSegment(lastIndex, nextIndex).forEach(updatePath);
+    samples.forEach(pointerEvent => {
+      const nextPosition = { x: pointerEvent.clientX, y: pointerEvent.clientY };
+      if (previousPosition) {
+        getBoggleCellsAlongSegment(
+          cellCentersRef.current,
+          previousPosition,
+          nextPosition,
+          boardBoundsRef.current
+        ).forEach(updatePath);
+      }
+      previousPosition = nextPosition;
+      lastPointerPositionRef.current = nextPosition;
+    });
   };
 
   const clearPointerPath = () => {
     pointerIdRef.current = null;
+    lastPointerPositionRef.current = null;
     pathRef.current = [];
     setSelectedPath([]);
   };
 
   const handlePointerUp = event => {
     if (pointerIdRef.current !== event.pointerId) return;
+    handlePointerMove(event);
     const submittedPath = [...pathRef.current];
     const formedWord = submittedPath.map(index => game.board[index]).join('');
     clearPointerPath();
@@ -261,10 +291,33 @@ export function BoggleGame() {
   return (
     <Box sx={{
       height: '100dvh', overflowY: 'auto', boxSizing: 'border-box',
-      bgcolor: '#080c12', color: '#e6edf3', p: { xs: 1.5, sm: 3 },
+      position: 'relative', bgcolor: '#080c12', color: '#e6edf3', p: { xs: 1.5, sm: 3 },
     }}>
+      {game.phase === 'finished' && (
+        <Box className="boggle-fireworks" aria-hidden="true">
+          {[
+            { left: '13%', top: '32%', delay: '0s' },
+            { left: '83%', top: '24%', delay: '-1s' },
+            { left: '76%', top: '74%', delay: '-2s' },
+          ].map((burst, burstIndex) => (
+            <Box key={burstIndex} className="boggle-firework-burst" sx={burst}>
+              {Array.from({ length: 14 }, (_, index) => (
+                <span
+                  key={index}
+                  className="boggle-firework-spark"
+                  style={{
+                    '--spark-angle': `${(360 / 14) * index}deg`,
+                    '--spark-distance': `${38 + (index % 3) * 10}px`,
+                    '--spark-delay': `${(index % 4) * 35}ms`,
+                  }}
+                />
+              ))}
+            </Box>
+          ))}
+        </Box>
+      )}
       <OfflineBanner online={online} />
-      <Box sx={{ maxWidth: 960, mx: 'auto' }}>
+      <Box sx={{ maxWidth: 960, mx: 'auto', position: 'relative', zIndex: 1 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1 }}>
           <Box>
             <Typography sx={{ color: ACCENT, fontWeight: 900, fontSize: { xs: '1.25rem', sm: '1.7rem' } }}>
@@ -314,7 +367,7 @@ export function BoggleGame() {
               onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel}
               sx={{
               width: 'min(100%, 440px)', mx: 'auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: { xs: 0.8, sm: 1.2 }, p: { xs: 1, sm: 1.5 }, borderRadius: '20px',
+              gap: { xs: 0.5, sm: 0.8 }, p: { xs: 0.8, sm: 1.2 }, borderRadius: '20px',
               bgcolor: 'rgba(6,214,160,0.07)', border: '1px solid rgba(6,214,160,0.2)',
               touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none',
               cursor: dictionary && timeLeft > 0 && game.phase === 'playing' ? 'pointer' : 'default',

@@ -3,7 +3,7 @@
 // Single hook that watches game state and fires bot actions when it's a bot's turn.
 // Only the HOST client runs bot logic — everyone else ignores this hook.
 //
-// Supported games: snakeladder, ludo, uno, minigolf, quiz
+// Supported games: snakeladder, ludo, uno, minigolf, quiz, boggle
 //
 import { useEffect, useRef } from 'react';
 import { rollSnakeDice, moveSnakePiece } from '../snakeladder/snakeLadderFirebaseService';
@@ -11,6 +11,8 @@ import { rollDice, movePiece } from '../ludo/ludoFirebaseService';
 import { playUnoCard, drawUnoCard } from '../uno/unoFirebaseService';
 import { fireShot } from '../minigolf/minigolfFirebaseService';
 import { submitQuizAnswer } from '../quiz/quizFirebaseService';
+import { loadBoggleDictionary, submitBoggleWord } from '../boggle/boggleFirebaseService';
+import { findBoggleWords, getNextBoggleBotActionAt } from '../boggle/boggleConstants';
 import { HOLES } from '../minigolf/minigolfConstants';
 import { canPlayCard } from '../uno/unoConstants';
 
@@ -66,9 +68,10 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
   // Track which action keys have already been handled to prevent double-firing
   const handledRef = useRef(new Set());
   const timersRef  = useRef([]);
+  const boggleWordsRef = useRef(null);
   // Always-current room reference so delayed callbacks never read stale closures
   const roomRef    = useRef(room);
-  useEffect(() => { roomRef.current = room; }, [room]);
+  roomRef.current = room;
 
   // ── Reset handledRef when the game resets (turnCount/currentIndex goes back to 0)
   // so bots act normally on rematch without unmounting the component.
@@ -306,4 +309,86 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
     room?.quizState?.currentIndex, room?.quizState?.phase,
     quizAnswerKeys,
   ]);
+
+  const boggleStartedAt = room?.boggleState?.startedAt;
+  const boggleEndsAt = room?.boggleState?.endsAt;
+  const bogglePhase = room?.boggleState?.phase;
+
+  useEffect(() => {
+    if (!isHost || gameType !== 'boggle' || bogglePhase !== 'playing' ||
+        !Number.isFinite(boggleStartedAt) || !Number.isFinite(boggleEndsAt)) return undefined;
+
+    let timerId;
+    let cancelled = false;
+    let inFlight = false;
+
+    const scheduleNextAction = () => {
+      const nextActionAt = getNextBoggleBotActionAt(boggleStartedAt, boggleEndsAt, Date.now());
+      if (nextActionAt == null || cancelled) return;
+      timerId = setTimeout(runBotActions, Math.max(0, nextActionAt - Date.now()));
+    };
+
+    const runBotActions = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+
+      try {
+        const activeRoom = roomRef.current;
+        const activeBoggle = activeRoom?.boggleState;
+        if (!activeBoggle || activeBoggle.phase !== 'playing' ||
+            activeBoggle.startedAt !== boggleStartedAt ||
+            Date.now() >= activeBoggle.endsAt) return;
+
+        const botIds = (activeBoggle.playerOrder || [])
+          .filter(uid => activeRoom.players?.[uid]?.isBot);
+        if (botIds.length === 0) return;
+
+        const dictionary = await loadBoggleDictionary();
+        const latestRoom = roomRef.current;
+        const latestBoggle = latestRoom?.boggleState;
+        if (!latestBoggle || latestBoggle.phase !== 'playing' ||
+            latestBoggle.startedAt !== boggleStartedAt ||
+            Date.now() >= latestBoggle.endsAt) return;
+
+        const boardKey = `${latestBoggle.startedAt}:${latestBoggle.minWordLength}:${latestBoggle.board.join('')}`;
+        if (boggleWordsRef.current?.key !== boardKey) {
+          boggleWordsRef.current = {
+            key: boardKey,
+            words: findBoggleWords(latestBoggle.board, dictionary, latestBoggle.minWordLength),
+          };
+        }
+
+        for (const uid of botIds) {
+          const currentRoom = roomRef.current;
+          const currentBoggle = currentRoom?.boggleState;
+          if (!currentBoggle || currentBoggle.phase !== 'playing' ||
+              currentBoggle.startedAt !== boggleStartedAt ||
+              Date.now() >= currentBoggle.endsAt ||
+              !currentRoom.players?.[uid]?.isBot ||
+              !currentBoggle.playerOrder?.includes(uid)) continue;
+
+          const availableWords = boggleWordsRef.current.words
+            .filter(word => !currentBoggle.submissions?.[word]?.[uid]);
+          if (availableWords.length === 0) continue;
+
+          const word = availableWords[Math.floor(Math.random() * availableWords.length)];
+          const result = await submitBoggleWord(roomId, uid, word, dictionary);
+          if (!result.accepted && result.error) {
+            console.warn(`Boggle bot ${uid} could not submit a word:`, result.error);
+          }
+        }
+      } catch (error) {
+        console.error('Boggle bot word submission failed:', error);
+      } finally {
+        inFlight = false;
+        scheduleNextAction();
+      }
+    };
+
+    scheduleNextAction();
+    return () => {
+      cancelled = true;
+      clearTimeout(timerId);
+    };
+  }, [isHost, gameType, roomId, boggleStartedAt, boggleEndsAt, bogglePhase]);
 }
