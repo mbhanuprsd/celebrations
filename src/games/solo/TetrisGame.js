@@ -82,10 +82,13 @@ function place(board, shape, ox, oy, color) {
 }
 
 function clearLines(board) {
+  const clearedRows = board
+    .map((row, index) => row.every(Boolean) ? index : -1)
+    .filter(index => index >= 0);
   const kept = board.filter(row => row.some(c => !c));
   const cleared = ROWS - kept.length;
   const empty = Array.from({ length: cleared }, () => Array(COLS).fill(null));
-  return { board: [...empty, ...kept], cleared };
+  return { board: [...empty, ...kept], cleared, clearedRows };
 }
 
 function ghostY(board, shape, ox, oy) {
@@ -98,22 +101,32 @@ function ghostY(board, shape, ox, oy) {
 
 function drawCell(ctx, x, y, color, size = CELL, alpha = 1) {
   const pad = 1;
+  const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+  gradient.addColorStop(0, '#ffffff');
+  gradient.addColorStop(0.12, color);
+  gradient.addColorStop(1, color);
   ctx.globalAlpha = alpha;
-  ctx.fillStyle = color;
+  ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.roundRect(x + pad, y + pad, size - pad * 2, size - pad * 2, 3);
+  ctx.roundRect(x + pad, y + pad, size - pad * 2, size - pad * 2, Math.max(2, size * 0.12));
   ctx.fill();
-  // Highlight
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
   ctx.beginPath();
-  ctx.roundRect(x + pad + 2, y + pad + 2, size - pad * 2 - 4, 5, 2);
+  ctx.roundRect(x + pad + 2, y + pad + 2, size - pad * 2 - 4, Math.max(3, size * 0.15), 2);
   ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x + pad + 0.5, y + pad + 0.5, size - pad * 2 - 1, size - pad * 2 - 1, Math.max(2, size * 0.12));
+  ctx.stroke();
   ctx.globalAlpha = 1;
 }
 
-function drawBoard(ctx, board) {
-  // Background
-  ctx.fillStyle = '#0d1117';
+function drawBoard(ctx, board, now = 0) {
+  const background = ctx.createLinearGradient(0, 0, W, H);
+  background.addColorStop(0, '#111827');
+  background.addColorStop(1, '#090c15');
+  ctx.fillStyle = background;
   ctx.fillRect(0, 0, W, H);
 
   // Grid
@@ -130,6 +143,14 @@ function drawBoard(ctx, board) {
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       if (board[r][c]) drawCell(ctx, c * CELL, r * CELL, COLORS[board[r][c]] || '#888');
+
+  const pulse = 0.035 + (Math.sin(now / 450) + 1) * 0.018;
+  const glow = ctx.createLinearGradient(0, 0, W, 0);
+  glow.addColorStop(0, `rgba(199,125,255,${pulse})`);
+  glow.addColorStop(0.5, 'rgba(76,201,240,0)');
+  glow.addColorStop(1, `rgba(76,201,240,${pulse})`);
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
 }
 
 function drawPiece(ctx, shape, ox, oy, color, alpha = 1) {
@@ -145,6 +166,39 @@ function drawPreview(ctx, shape, color, size = PREVIEW_CELL) {
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++)
       if (shape[r][c]) drawCell(ctx, (offX + c) * size, (offY + r) * size, COLORS[color] || '#888', size);
+}
+
+function drawLineClearEffect(ctx, effect, now) {
+  if (!effect) return;
+  const progress = Math.min(1, (now - effect.startedAt) / 460);
+  if (progress >= 1) return;
+
+  effect.rows.forEach(row => {
+    const y = row * CELL;
+    const alpha = (1 - progress) * 0.9;
+    const sweepX = progress * W;
+    const sweep = ctx.createLinearGradient(Math.max(0, sweepX - 90), y, sweepX + 15, y);
+    sweep.addColorStop(0, 'rgba(255,255,255,0)');
+    sweep.addColorStop(0.7, `rgba(255,255,255,${alpha})`);
+    sweep.addColorStop(1, `rgba(199,125,255,${alpha})`);
+    ctx.fillStyle = sweep;
+    ctx.fillRect(0, y, W, CELL);
+
+    for (let index = 0; index < 12; index++) {
+      const seed = row * 31 + index * 17;
+      const startX = ((seed * 13) % W);
+      const startY = y + ((seed * 7) % CELL);
+      const direction = index % 2 === 0 ? 1 : -1;
+      const particleX = startX + direction * progress * (28 + (index % 4) * 14);
+      const particleY = startY - progress * (18 + (index % 3) * 13);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = index % 3 === 0 ? '#ffffff' : '#ffd166';
+      ctx.beginPath();
+      ctx.arc(particleX, particleY, Math.max(0.5, 2.5 * (1 - progress)), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+  ctx.globalAlpha = 1;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -176,6 +230,7 @@ export function TetrisGame({ onExit, userId, playerName }) {
       lines: 0,
       level: 1,
       over:  false,
+      lineClearEffect: null,
     };
   }, []);
 
@@ -198,10 +253,13 @@ export function TetrisGame({ onExit, userId, playerName }) {
     } else {
       // Lock
       g.board = place(g.board, g.cur.shape, g.ox, g.oy, g.cur.color);
-      const { board: nb, cleared } = clearLines(g.board);
+      const { board: nb, cleared, clearedRows } = clearLines(g.board);
       g.board = nb;
 
       const pts = LINE_POINTS[cleared] * g.level;
+      if (cleared > 0) {
+        g.lineClearEffect = { rows: clearedRows, startedAt: performance.now() };
+      }
       g.score += pts;
       g.lines += cleared;
       g.level = Math.floor(g.lines / 10) + 1;
@@ -235,7 +293,7 @@ export function TetrisGame({ onExit, userId, playerName }) {
   }, [dropPiece]);
 
   // ── Render loop ─────────────────────────────────────────────────────────────
-  const render = useCallback(() => {
+  const render = useCallback((now = 0) => {
     const g = gameRef.current;
     if (!g) return;
     const canvas = canvasRef.current;
@@ -243,7 +301,7 @@ export function TetrisGame({ onExit, userId, playerName }) {
     if (!canvas || !preview) return;
 
     const ctx = canvas.getContext('2d');
-    drawBoard(ctx, g.board);
+    drawBoard(ctx, g.board, now);
 
     // Ghost piece
     const gy = ghostY(g.board, g.cur.shape, g.ox, g.oy);
@@ -251,6 +309,7 @@ export function TetrisGame({ onExit, userId, playerName }) {
 
     // Active piece
     drawPiece(ctx, g.cur.shape, g.ox, g.oy, g.cur.color);
+    drawLineClearEffect(ctx, g.lineClearEffect, now);
 
     // Preview canvas
     const pctx = preview.getContext('2d');
@@ -362,11 +421,14 @@ export function TetrisGame({ onExit, userId, playerName }) {
   }, []);
 
   const SIDEBAR_W = 92;
-  const TOTAL_W = W + SIDEBAR_W;
+  const TOTAL_W = `min(${W + SIDEBAR_W}px, calc(100vw - 24px), calc((100dvh - 190px) * 0.5 + ${SIDEBAR_W}px))`;
 
   return (
     <Box sx={{
       position: 'fixed', inset: 0, zIndex: 9999,
+      boxSizing: 'border-box',
+      pt: 'max(8px, env(safe-area-inset-top))',
+      pb: 'max(8px, env(safe-area-inset-bottom))',
       background: 'linear-gradient(160deg, #080c12 0%, #0d0a1a 100%)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden',
@@ -408,11 +470,11 @@ export function TetrisGame({ onExit, userId, playerName }) {
       </Box>
 
       {/* Game area */}
-      <Box sx={{ display: 'flex', gap: 0, position: 'relative',
+      <Box sx={{ width: TOTAL_W, display: 'flex', gap: 0, position: 'relative',
         borderRadius: '16px', boxShadow: '0 0 60px rgba(199,125,255,0.08)',
       }}>
         {/* Board */}
-        <Box sx={{ position: 'relative' }}>
+        <Box sx={{ position: 'relative', flex: 1, minWidth: 0 }}>
           {/* Top gradient accent */}
           <Box sx={{
             position: 'absolute', top: -2, left: 0, right: 0, height: 3, zIndex: 1,
@@ -423,7 +485,11 @@ export function TetrisGame({ onExit, userId, playerName }) {
             ref={canvasRef}
             width={W}
             height={H}
-            style={{ borderRadius: '12px 0 0 12px', border: '1px solid rgba(199,125,255,0.15)', display: 'block' }}
+            style={{
+              width: '100%', height: 'auto', aspectRatio: `${W} / ${H}`,
+              borderRadius: '12px 0 0 12px', border: '1px solid rgba(199,125,255,0.2)',
+              display: 'block', touchAction: 'none',
+            }}
             onTouchStart={onTouchStart}
             onTouchEnd={onTouchEnd}
           />
@@ -515,7 +581,8 @@ export function TetrisGame({ onExit, userId, playerName }) {
 
         {/* Sidebar */}
         <Box sx={{
-          width: SIDEBAR_W,
+          width: { xs: 76, sm: SIDEBAR_W },
+          flexShrink: 0,
           background: 'linear-gradient(180deg, rgba(13,10,26,0.98) 0%, rgba(8,12,18,0.98) 100%)',
           border: '1px solid rgba(199,125,255,0.12)', borderLeft: 'none',
           borderRadius: '0 12px 12px 0', display: 'flex', flexDirection: 'column',

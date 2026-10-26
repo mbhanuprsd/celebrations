@@ -285,7 +285,9 @@ export function Lobby() {
     <Box sx={{
       minHeight: '100dvh', bgcolor: '#080c12',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      p: { xs: 1.5, sm: 2 }, position: 'relative', overflow: 'hidden',
+      p: { xs: 1.5, sm: 2 }, pt: 'max(12px, env(safe-area-inset-top))',
+      pb: 'max(12px, env(safe-area-inset-bottom))',
+      position: 'relative', overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box',
     }}>
       {/* Bg glow */}
       <Box sx={{

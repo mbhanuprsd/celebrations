@@ -338,6 +338,7 @@ export function LudoGame() {
   return (
     <Box sx={{
       height: '100dvh',
+      boxSizing: 'border-box', pt: 'env(safe-area-inset-top)',
       display: 'flex', flexDirection: 'column',
       bgcolor: '#0d1117', overflow: 'hidden', position: 'relative',
     }}>

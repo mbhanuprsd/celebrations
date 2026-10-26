@@ -1,5 +1,6 @@
 import {
   chooseTargetWord,
+  advanceRacingScore,
   getFrameDelta,
   getLetterStatuses,
   isAllowedGuess,
@@ -48,6 +49,15 @@ describe('frame timing helper', () => {
     expect(getFrameDelta(1000, 1000 - 1000 / 60)).toBeCloseTo(1);
     expect(getFrameDelta(1000, 1000 - 1000 / 120)).toBeCloseTo(0.5);
     expect(getFrameDelta(1000, 1000 - 1000 / 30)).toBeCloseTo(2);
+  });
+
+  describe('racing score helper', () => {
+    test('advances fractional distance before flooring the final score', () => {
+      const updatedScore = advanceRacingScore(9.95, 2, 1);
+
+      expect(updatedScore).toBeCloseTo(10.15);
+      expect(Math.floor(updatedScore)).toBe(10);
+    });
   });
 
   test('uses a normal first frame and caps long pauses', () => {

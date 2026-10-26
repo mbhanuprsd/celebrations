@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, IconButton, Paper, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, IconButton, Paper, Tooltip, Typography, useMediaQuery } from '@mui/material';
 import CallEndIcon from '@mui/icons-material/CallEnd';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import MicIcon from '@mui/icons-material/Mic';
 import MicOffIcon from '@mui/icons-material/MicOff';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
@@ -11,6 +13,7 @@ import { functions } from '../firebase';
 const createVoiceRoomToken = httpsCallable(functions, 'createVoiceRoomToken');
 
 export function GameVoiceChat({ roomId }) {
+  const isMobile = useMediaQuery('(max-width:600px)');
   const mountedRef = useRef(false);
   const roomRef = useRef(null);
   const audioElementsRef = useRef(new Map());
@@ -20,6 +23,8 @@ export function GameVoiceChat({ roomId }) {
   const [participantCount, setParticipantCount] = useState(1);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [error, setError] = useState('');
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+  const showMobileDetails = !isMobile || mobileDetailsOpen;
 
   const detachAudio = useCallback(track => {
     const audio = audioElementsRef.current.get(track.sid);
@@ -166,11 +171,11 @@ export function GameVoiceChat({ roomId }) {
       elevation={12}
       sx={{
         position: 'fixed',
-        right: { xs: 12, sm: 20 },
-        bottom: { xs: 12, sm: 20 },
+        right: { xs: 'max(8px, env(safe-area-inset-right))', sm: 20 },
+        bottom: { xs: 'max(8px, env(safe-area-inset-bottom))', sm: 20 },
         zIndex: 1500,
         width: 'min(320px, calc(100vw - 24px))',
-        p: 1.5,
+        p: { xs: 1, sm: 1.5 },
         bgcolor: '#101827',
         color: '#f0f6fc',
         border: '1px solid rgba(76, 201, 240, 0.32)',
@@ -181,10 +186,22 @@ export function GameVoiceChat({ roomId }) {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
         <Box>
           <Typography sx={{ fontWeight: 800, fontSize: '0.9rem' }}>Game voice</Typography>
-          <Typography sx={{ color: connected ? '#86efac' : '#94a3b8', fontSize: '0.72rem' }}>
+          <Typography sx={{ display: { xs: showMobileDetails ? 'block' : 'none', sm: 'block' }, color: connected ? '#86efac' : '#94a3b8', fontSize: '0.72rem' }}>
             {connecting ? 'Connecting…' : connected ? `${participantCount} in voice` : 'Voice is off'}
           </Typography>
         </Box>
+        {isMobile && (
+          <Tooltip title={mobileDetailsOpen ? 'Hide voice status' : 'Show voice status'}>
+            <IconButton
+              size="small"
+              onClick={() => setMobileDetailsOpen(open => !open)}
+              aria-label={mobileDetailsOpen ? 'Hide voice status' : 'Show voice status'}
+              sx={{ color: '#94a3b8', p: 0.4 }}
+            >
+              {mobileDetailsOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+        )}
         {connected ? (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             {audioBlocked && (
@@ -219,12 +236,12 @@ export function GameVoiceChat({ roomId }) {
           </Button>
         )}
       </Box>
-      {error && (
+      {error && showMobileDetails && (
         <Alert severity="error" onClose={() => setError('')} sx={{ mt: 1, fontSize: '0.75rem' }}>
           {error}
         </Alert>
       )}
-      {audioBlocked && !error && (
+      {audioBlocked && !error && showMobileDetails && (
         <Alert severity="warning" sx={{ mt: 1, fontSize: '0.75rem' }}>
           Browser blocked incoming audio. Select the speaker button to enable it.
         </Alert>

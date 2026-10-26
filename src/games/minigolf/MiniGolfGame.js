@@ -503,7 +503,8 @@ export function MiniGolfGame() {
   const currentPlayerName = room.players?.[u.playerOrder?.[u.currentIndex]]?.name || '...';
 
   return (
-    <Box sx={{ height: '100dvh', bgcolor: '#080c12', display: 'flex',
+    <Box sx={{ height: '100dvh', boxSizing: 'border-box', pt: 'env(safe-area-inset-top)',
+      pb: 'env(safe-area-inset-bottom)', bgcolor: '#080c12', display: 'flex',
       flexDirection: 'column', overflow: 'hidden', userSelect: 'none' }}>
 
       {/* ── Top bar ── */}

@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Box, Typography, Button } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { saveSoloScore, getLocalSoloBest } from '../../firebase/services';
-import { getFrameDelta } from './soloGameUtils';
+import { advanceRacingScore, getFrameDelta } from './soloGameUtils';
 
 const W = 360;
 const H = 600;
@@ -15,6 +15,8 @@ const OBSTACLE_W = 36;
 const OBSTACLE_H = 60;
 const INITIAL_SPEED = 2;
 const SPEED_INCREMENT = 0.0010;
+const CRASH_ANIMATION_FRAMES = 42;
+const GAME_SURFACE_WIDTH = `min(${W}px, calc(100vw - 24px), calc((100dvh - 190px) * 0.6))`;
 
 function getLaneX(lane) {
   return lane * LANE_WIDTH + LANE_WIDTH / 2 - CAR_W / 2;
@@ -34,10 +36,15 @@ function drawRoad(ctx, offset) {
   ctx.fillRect(0, 0, 20, H);
   ctx.fillRect(W - 20, 0, 20, H);
 
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  ctx.fillRect(22, 0, 2, H);
+  ctx.fillRect(W - 24, 0, 2, H);
+
   // Lane dashes
   ctx.strokeStyle = '#ffd166';
   ctx.lineWidth = 3;
   ctx.setLineDash([40, 30]);
+  ctx.lineDashOffset = -offset;
   for (let l = 1; l < LANE_COUNT; l++) {
     ctx.beginPath();
     ctx.moveTo(l * LANE_WIDTH, 0);
@@ -45,37 +52,45 @@ function drawRoad(ctx, offset) {
     ctx.stroke();
   }
   ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
 }
 
 function drawCar(ctx, x, y, color, accent) {
-  // Body
-  ctx.fillStyle = color;
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 14;
+  const bodyGradient = ctx.createLinearGradient(x, y, x + CAR_W, y + CAR_H);
+  bodyGradient.addColorStop(0, '#ffffff');
+  bodyGradient.addColorStop(0.12, color);
+  bodyGradient.addColorStop(1, accent);
+  ctx.fillStyle = bodyGradient;
   ctx.beginPath();
   ctx.roundRect(x + 4, y + 10, CAR_W - 8, CAR_H - 16, 6);
   ctx.fill();
 
-  // Cabin
+  ctx.shadowBlur = 0;
   ctx.fillStyle = accent;
   ctx.beginPath();
   ctx.roundRect(x + 8, y + 16, CAR_W - 16, 22, 4);
   ctx.fill();
 
-  // Wheels
   ctx.fillStyle = '#111';
   ctx.fillRect(x, y + 12, 8, 14);
   ctx.fillRect(x + CAR_W - 8, y + 12, 8, 14);
   ctx.fillRect(x, y + CAR_H - 26, 8, 14);
   ctx.fillRect(x + CAR_W - 8, y + CAR_H - 26, 8, 14);
 
-  // Headlights
   ctx.fillStyle = '#fffaaa';
+  ctx.shadowColor = '#fffaaa';
+  ctx.shadowBlur = 8;
   ctx.fillRect(x + 6, y + 8, 8, 5);
   ctx.fillRect(x + CAR_W - 14, y + 8, 8, 5);
 
-  // Taillights
+  ctx.shadowBlur = 0;
   ctx.fillStyle = '#ff4444';
   ctx.fillRect(x + 6, y + CAR_H - 14, 8, 5);
   ctx.fillRect(x + CAR_W - 14, y + CAR_H - 14, 8, 5);
+  ctx.restore();
 }
 
 function drawObstacle(ctx, x, y) {
@@ -83,17 +98,31 @@ function drawObstacle(ctx, x, y) {
 }
 
 function drawExplosion(ctx, x, y, frame) {
-  const r = frame * 4;
-  const alpha = Math.max(0, 1 - frame / 15);
+  const centerX = x + CAR_W / 2;
+  const centerY = y + CAR_H / 2;
+  const r = frame * 4.5;
+  const alpha = Math.max(0, 1 - frame / 30);
   ctx.globalAlpha = alpha;
-  const grad = ctx.createRadialGradient(x + CAR_W / 2, y + CAR_H / 2, 0, x + CAR_W / 2, y + CAR_H / 2, r);
+  const grad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, r);
   grad.addColorStop(0, '#fff');
-  grad.addColorStop(0.3, '#ffd166');
+  grad.addColorStop(0.22, '#fff4b0');
+  grad.addColorStop(0.55, '#ff9f1c');
   grad.addColorStop(1, 'transparent');
   ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.arc(x + CAR_W / 2, y + CAR_H / 2, r, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
   ctx.fill();
+
+  for (let index = 0; index < 12; index++) {
+    const angle = (Math.PI * 2 * index) / 12;
+    const distance = frame * (2 + (index % 3) * 0.7);
+    const sparkX = centerX + Math.cos(angle) * distance;
+    const sparkY = centerY + Math.sin(angle) * distance;
+    ctx.fillStyle = index % 2 ? '#ffd166' : '#ff476f';
+    ctx.beginPath();
+    ctx.arc(sparkX, sparkY, Math.max(0.5, 3 - frame / 12), 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -103,8 +132,9 @@ export function RacingGame({ onExit, userId, playerName }) {
   const animRef = useRef(null);
   const lastFrameTs = useRef(null);
   const [score, setScore] = useState(0);
-  const [gameStatus, setGameStatus] = useState('idle'); // idle | playing | dead
+  const [gameStatus, setGameStatus] = useState('idle'); // idle | playing | crashing | dead
   const [bestScore, setBestScore] = useState(() => getLocalSoloBest(userId, 'racing'));
+  const [isNewBest, setIsNewBest] = useState(false);
 
   const initState = useCallback(() => ({
     lane: 1,
@@ -123,9 +153,11 @@ export function RacingGame({ onExit, userId, playerName }) {
   }), []);
 
   const start = useCallback(() => {
+    if (canvasRef.current) canvasRef.current.style.transform = '';
     stateRef.current = initState();
     lastFrameTs.current = null;
     setScore(0);
+    setIsNewBest(false);
     setGameStatus('playing');
   }, [initState]);
 
@@ -160,7 +192,7 @@ export function RacingGame({ onExit, userId, playerName }) {
 
   // Game loop
   useEffect(() => {
-    if (gameStatus !== 'playing') return;
+    if (gameStatus === 'idle' || gameStatus === 'dead') return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
 
@@ -169,6 +201,32 @@ export function RacingGame({ onExit, userId, playerName }) {
       if (!s) return;
       const frameDelta = getFrameDelta(now, lastFrameTs.current);
       lastFrameTs.current = now;
+
+      if (s.dead) {
+        drawRoad(ctx, s.roadOffset);
+        s.obstacles.forEach(o => drawObstacle(ctx, o.x, o.y));
+        if (s.explosionFrame < 6) {
+          drawCar(ctx, s.carX, s.carY, '#4cc9f0', '#2a6f8f');
+        }
+        s.explosionFrame += frameDelta;
+        drawExplosion(ctx, s.explosionX, s.explosionY, s.explosionFrame);
+        if (s.explosionFrame < 4) {
+          ctx.fillStyle = `rgba(255,244,176,${0.28 - s.explosionFrame * 0.06})`;
+          ctx.fillRect(0, 0, W, H);
+        }
+        if (s.explosionFrame < 12) {
+          const shake = (12 - s.explosionFrame) * 0.35;
+          canvas.style.transform = `translate(${Math.sin(s.explosionFrame * 2.4) * shake}px, ${Math.cos(s.explosionFrame * 1.8) * shake}px)`;
+        } else {
+          canvas.style.transform = '';
+        }
+        if (s.explosionFrame < CRASH_ANIMATION_FRAMES) {
+          animRef.current = requestAnimationFrame(loop);
+        } else {
+          setGameStatus('dead');
+        }
+        return;
+      }
 
       // Move car toward target lane
       const targetX = getLaneX(s.targetLane);
@@ -180,6 +238,8 @@ export function RacingGame({ onExit, userId, playerName }) {
 
       // Speed up over time
       s.speed += SPEED_INCREMENT * frameDelta;
+      s.score = advanceRacingScore(s.score, s.speed, frameDelta);
+      setScore(Math.floor(s.score));
 
       // Spawn obstacles
       s.spawnTimer += frameDelta;
@@ -215,19 +275,16 @@ export function RacingGame({ onExit, userId, playerName }) {
             s.explosionY = s.carY;
             s.explosionFrame = 0;
             const finalScore = Math.floor(s.score);
-            setGameStatus('dead');
+            const newBest = finalScore > bestScore;
+            setIsNewBest(newBest);
+            setGameStatus('crashing');
             // Save score
             saveSoloScore(userId, playerName, 'racing', finalScore);
-            setBestScore(prev => Math.max(prev, finalScore));
+            if (newBest) setBestScore(finalScore);
             break;
           }
         }
       }
-
-      // Score
-      s.score += s.speed * 0.1 * frameDelta;
-      const rounded = Math.floor(s.score);
-      setScore(rounded);
 
       // Draw
       drawRoad(ctx, s.roadOffset);
@@ -239,10 +296,19 @@ export function RacingGame({ onExit, userId, playerName }) {
       if (!s.dead) {
         drawCar(ctx, s.carX, s.carY, '#4cc9f0', '#2a6f8f');
       } else {
-        // Explosion
+        drawCar(ctx, s.carX, s.carY, '#4cc9f0', '#2a6f8f');
         s.explosionFrame += frameDelta;
         drawExplosion(ctx, s.explosionX, s.explosionY, s.explosionFrame);
-        if (s.explosionFrame > 30) return; // stop loop
+        if (s.explosionFrame < 12) {
+          const shake = (12 - s.explosionFrame) * 0.35;
+          canvas.style.transform = `translate(${Math.sin(s.explosionFrame * 2.4) * shake}px, ${Math.cos(s.explosionFrame * 1.8) * shake}px)`;
+        } else {
+          canvas.style.transform = '';
+        }
+        if (s.explosionFrame >= CRASH_ANIMATION_FRAMES) {
+          setGameStatus('dead');
+          return;
+        }
       }
 
       animRef.current = requestAnimationFrame(loop);
@@ -250,11 +316,14 @@ export function RacingGame({ onExit, userId, playerName }) {
 
     animRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animRef.current);
-  }, [gameStatus, playerName, userId]);
+  }, [bestScore, gameStatus, playerName, userId]);
 
   return (
     <Box sx={{
       position: 'fixed', inset: 0, zIndex: 9999,
+      boxSizing: 'border-box',
+      pt: 'max(8px, env(safe-area-inset-top))',
+      pb: 'max(8px, env(safe-area-inset-bottom))',
       background: 'linear-gradient(160deg, #080c12 0%, #0a0e1a 100%)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden',
@@ -266,7 +335,7 @@ export function RacingGame({ onExit, userId, playerName }) {
         background: 'radial-gradient(circle, #4CC9F010, transparent 70%)', pointerEvents: 'none' }} />
 
       {/* Header */}
-      <Box sx={{ width: W, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.2, px: 0.5 }}>
+      <Box sx={{ width: GAME_SURFACE_WIDTH, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.2, px: 0.5 }}>
         <Button
           startIcon={<ArrowBackIcon />}
           onClick={onExit}
@@ -301,7 +370,7 @@ export function RacingGame({ onExit, userId, playerName }) {
       </Box>
 
       {/* Canvas wrapper */}
-      <Box sx={{ position: 'relative', borderRadius: '16px', boxShadow: '0 0 60px rgba(255,159,28,0.07)' }}>
+      <Box sx={{ width: GAME_SURFACE_WIDTH, position: 'relative', borderRadius: '16px', boxShadow: '0 0 60px rgba(255,159,28,0.12)' }}>
 
         {/* Top gradient accent */}
         <Box sx={{
@@ -314,7 +383,11 @@ export function RacingGame({ onExit, userId, playerName }) {
           ref={canvasRef}
           width={W}
           height={H}
-          style={{ borderRadius: 16, border: '1px solid rgba(255,159,28,0.15)', display: 'block' }}
+          style={{
+            width: '100%', height: 'auto', aspectRatio: '3 / 5',
+            borderRadius: 16, border: '1px solid rgba(255,159,28,0.2)', display: 'block',
+            transition: 'filter 0.2s ease',
+          }}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         />
@@ -376,7 +449,7 @@ export function RacingGame({ onExit, userId, playerName }) {
           }}>
             <Typography sx={{ fontSize: '3rem', mb: 1 }}>💥</Typography>
             <Typography sx={{ fontWeight: 900, fontSize: '1.6rem', color: '#EF476F', mb: 1 }}>Total Wreckage!</Typography>
-            {score >= bestScore && score > 0 && (
+            {isNewBest && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 1,
                 bgcolor: 'rgba(255,209,102,0.1)', px: 1.5, py: 0.4, borderRadius: '10px',
                 border: '1px solid rgba(255,209,102,0.25)' }}>
@@ -407,7 +480,7 @@ export function RacingGame({ onExit, userId, playerName }) {
       {/* Mobile Controls */}
       {gameStatus === 'playing' && (
         <Box sx={{
-          width: W, display: 'flex', justifyContent: 'space-between', mt: 1.5, px: 1, gap: 2,
+          width: GAME_SURFACE_WIDTH, display: 'flex', justifyContent: 'space-between', mt: 1.5, px: 1, gap: 2,
         }}>
           {[{ label: '⬅', dir: 'left', color: '#FF9F1C' }, { label: '➡', dir: 'right', color: '#4CC9F0' }].map(({ label, dir, color }) => (
             <Box
@@ -418,8 +491,9 @@ export function RacingGame({ onExit, userId, playerName }) {
                 borderRadius: '14px', fontSize: '1.6rem',
                 background: 'rgba(255,255,255,0.04)',
                 border: `1px solid ${color}28`,
-                cursor: 'pointer', userSelect: 'none',
-                transition: 'all 0.1s',
+                color, cursor: 'pointer', userSelect: 'none', touchAction: 'manipulation',
+                boxShadow: `0 4px 18px ${color}10`,
+                transition: 'all 0.16s ease',
                 '&:active': { background: `${color}18`, border: `1px solid ${color}60`, transform: 'scale(0.96)' },
               }}
             >

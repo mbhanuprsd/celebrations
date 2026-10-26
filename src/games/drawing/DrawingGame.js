@@ -364,7 +364,11 @@ export function DrawingGame() {
     : room.roundStartTime || null;
 
   return (
-    <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', bgcolor: '#0d1117', overflow: 'hidden', position: 'relative' }}>
+    <Box sx={{
+      height: '100dvh', boxSizing: 'border-box', pt: 'env(safe-area-inset-top)',
+      pb: 'env(safe-area-inset-bottom)', display: 'flex', flexDirection: 'column',
+      bgcolor: '#0d1117', overflow: 'hidden', position: 'relative',
+    }}>
 
       <OfflineBanner online={online} />
 

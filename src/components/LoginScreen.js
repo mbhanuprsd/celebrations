@@ -65,9 +65,12 @@ export function LoginScreen() {
 
   return (
     <Box sx={{
-      height: '100dvh', bgcolor: '#080c12',
+      minHeight: '100dvh', boxSizing: 'border-box',
+      pt: 'max(16px, env(safe-area-inset-top))',
+      pb: 'max(16px, env(safe-area-inset-bottom))',
+      bgcolor: '#080c12',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      position: 'relative', overflow: 'hidden', px: 2,
+      position: 'relative', overflowY: 'auto', overflowX: 'hidden', px: 2,
     }}>
       {/* Background orbs */}
       {[

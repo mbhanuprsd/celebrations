@@ -319,7 +319,7 @@ export function UnoGame() {
 
   return (
     <UnoErrorBoundary>
-      <Box sx={{ height:'100dvh', background:'linear-gradient(160deg,#0d2137 0%,#071424 100%)', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative', userSelect:'none' }}>
+      <Box sx={{ height:'100dvh', boxSizing:'border-box', pt:'env(safe-area-inset-top)', background:'linear-gradient(160deg,#0d2137 0%,#071424 100%)', display:'flex', flexDirection:'column', overflow:'hidden', position:'relative', userSelect:'none' }}>
         <OfflineBanner online={online} />
 
         {/* Header */}
@@ -430,7 +430,12 @@ export function UnoGame() {
             )}
           </Box>
           {/* Hand */}
-          <Box sx={{ display:'flex', flexWrap:'wrap', gap:`${cardGap}px`, px:1.8, pb:1.5, overflow:'hidden', alignItems:'center', justifyContent:'center', minHeight:96 }}>
+          <Box sx={{
+            display:'flex', flexWrap:'nowrap', gap:`${cardGap}px`, px:1.2, pb:1.5,
+            overflowX:'auto', overflowY:'hidden', alignItems:'center', justifyContent:'flex-start',
+            minHeight:96, WebkitOverflowScrolling:'touch', scrollbarWidth:'none',
+            '&::-webkit-scrollbar': { display:'none' },
+          }}>
             {myHand.map((card, i) => {
               const isPlayable = playableIds.has(card.id) && !busy && isMyTurn;
               return (

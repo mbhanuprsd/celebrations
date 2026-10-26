@@ -218,7 +218,11 @@ export function HomeScreen() {
   const activeMeta = NAV_ITEMS.find(n => n.id === activeSection);
 
   return (
-    <Box sx={{ minHeight: '100dvh', bgcolor: '#080c12', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', position: 'relative', overflow: 'hidden', pb: 5 }}>
+    <Box sx={{
+      minHeight: '100dvh', bgcolor: '#080c12', display: 'flex', alignItems: 'flex-start',
+      justifyContent: 'center', position: 'relative', overflowX: 'hidden', overflowY: 'visible',
+      pt: 'env(safe-area-inset-top)', pb: 'max(40px, env(safe-area-inset-bottom))',
+    }}>
       <BgOrbs />
 
       <SideNav

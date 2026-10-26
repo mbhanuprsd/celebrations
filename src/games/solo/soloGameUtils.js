@@ -53,3 +53,7 @@ export function getFrameDelta(now, previousFrameTime) {
   if (previousFrameTime == null) return 1;
   return Math.min(Math.max(0, (now - previousFrameTime) / (1000 / 60)), 3);
 }
+
+export function advanceRacingScore(score, speed, frameDelta) {
+  return score + speed * 0.1 * frameDelta;
+}

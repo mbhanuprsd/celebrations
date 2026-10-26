@@ -2,16 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <meta name="theme-color" content="#4361EE" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#080c12" />
     <meta name="description" content="Celebrations 🎉 - multiplayer games" />
     <meta property="og:title" content="Celebrations 🎉" />
     <meta property="og:description" content="Draw it. Guess it. Win it! Multiplayer drawing game for 2-12 players." />
     <title>Celebrations </title>
     <style>
       * { box-sizing: border-box; }
-      body { margin: 0; padding: 0; overflow-x: hidden; }
-      #root { min-height: 100vh; }
+      html, body { min-height: 100%; }
+      body { margin: 0; padding: 0; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+      #root { min-height: 100vh; min-height: 100dvh; }
+      button, [role="button"], a { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+      @media (max-width: 600px) {
+        input, select, textarea { font-size: 16px !important; }
+      }
     </style>
   </head>
   <body>

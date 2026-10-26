@@ -399,7 +399,8 @@ export function QuizGame() {
   const qTotal     = q.questions?.length || QUIZ_SETTINGS.questionCount;
 
   return (
-    <Box sx={{ height: '100dvh', bgcolor: '#080c12', display: 'flex',
+    <Box sx={{ height: '100dvh', boxSizing: 'border-box', pt: 'env(safe-area-inset-top)',
+      pb: 'env(safe-area-inset-bottom)', bgcolor: '#080c12', display: 'flex',
       flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* ── Top bar ── */}

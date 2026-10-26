@@ -348,7 +348,7 @@ export function SnakeLadderGame() {
 
   return (
     <Box sx={{
-      height: '100dvh', bgcolor: '#080c12',
+      height: '100dvh', boxSizing: 'border-box', pt: 'env(safe-area-inset-top)', bgcolor: '#080c12',
       display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative',
     }}>
       <OfflineBanner online={online} />

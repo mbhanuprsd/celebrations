@@ -427,7 +427,10 @@ export function BoggleGame() {
   return (
     <Box sx={{
       height: '100dvh', overflowY: 'auto', boxSizing: 'border-box',
-      position: 'relative', bgcolor: '#080c12', color: '#e6edf3', p: { xs: 1.5, sm: 3 },
+      position: 'relative', bgcolor: '#080c12', color: '#e6edf3',
+      p: { xs: 1.5, sm: 3 },
+      pt: 'max(12px, env(safe-area-inset-top))',
+      pb: 'max(12px, env(safe-area-inset-bottom))',
     }}>
       {game.phase === 'finished' && (
         <Box className="boggle-fireworks" aria-hidden="true">

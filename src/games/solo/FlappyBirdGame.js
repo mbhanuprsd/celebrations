@@ -24,6 +24,8 @@ const PIPE_INTERVAL = 1700; // ms between pipe spawns (time-based)
 
 const GROUND_H = 56;
 const SKY_H    = H - GROUND_H;
+const GAME_SURFACE_WIDTH = `min(${W}px, calc(100vw - 24px), calc((100dvh - 190px) * 0.6))`;
+const CRASH_FRAMES = 30;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function randomGapY() {
@@ -51,6 +53,12 @@ function drawBackground(ctx, bgOffset) {
       const x = ((bgOffset * 0.3 + c.ox) % (W + 120)) - 60;
       ctx.beginPath(); ctx.ellipse(x, c.y, c.rw / 2, c.rh / 2, 0, 0, Math.PI * 2); ctx.fill();
     });
+
+  const sunGlow = ctx.createRadialGradient(W - 48, 72, 4, W - 48, 72, 72);
+  sunGlow.addColorStop(0, 'rgba(255,209,102,0.22)');
+  sunGlow.addColorStop(1, 'rgba(255,209,102,0)');
+  ctx.fillStyle = sunGlow;
+  ctx.fillRect(W - 120, 0, 120, 145);
 }
 
 function drawGround(ctx, groundOffset) {
@@ -94,6 +102,11 @@ function drawPipe(ctx, x, gapY) {
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
   ctx.fillRect(x + 8, 0, 10, topH - 14);
   ctx.fillRect(x + 8, botY + 14, 10, botH - 14);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, 0.5, PIPE_WIDTH - 1, Math.max(0, topH - 15));
+  ctx.strokeRect(x + 0.5, botY + 15, PIPE_WIDTH - 1, Math.max(0, botH - 15));
 }
 
 function drawBird(ctx, y, vel, wobble) {
@@ -153,8 +166,9 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
   const lastFrameTs = useRef(null);
 
   const [score,      setScore]      = useState(0);
-  const [gameStatus, setGameStatus] = useState('idle');
+  const [gameStatus, setGameStatus] = useState('idle'); // idle | playing | crashing | dead
   const [bestScore,  setBestScore]  = useState(() => getLocalSoloBest(userId, 'flappy'));
+  const [isNewBest, setIsNewBest] = useState(false);
 
   // ── Idle canvas: bird bobs in place ─────────────────────────────────────────
   useEffect(() => {
@@ -203,6 +217,7 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
     // Delay first pipe so player has ~1.2 s to find their rhythm
     lastPipeTs.current = performance.now() + 1200;
     setScore(0);
+    setIsNewBest(false);
     setGameStatus('playing');
   }, [initState]);
 
@@ -221,7 +236,7 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
 
   // ── Game loop ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (gameStatus !== 'playing') return;
+    if (gameStatus !== 'playing' && gameStatus !== 'crashing') return;
     const canvas = canvasRef.current;
     const ctx    = canvas.getContext('2d');
 
@@ -277,16 +292,18 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
 
         if (s.dead) {
           const finalScore = s.score;
-          setGameStatus('dead');
+          const newBest = finalScore > bestScore;
+          setIsNewBest(newBest);
+          setGameStatus('crashing');
           saveSoloScore(userId, playerName, 'flappy', finalScore);
-          setBestScore(prev => Math.max(prev, finalScore));
+          if (newBest) setBestScore(finalScore);
         }
       } else {
-        // Death fall
         if (s.birdY < SKY_H - BIRD_R) {
           s.birdVel = Math.min(s.birdVel + GRAVITY * 1.6 * frameDelta, MAX_VEL * 1.5);
           s.birdY  += s.birdVel * frameDelta;
         }
+        s.crashFrame = (s.crashFrame || 0) + frameDelta;
       }
 
       // Draw
@@ -294,14 +311,22 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
       s.pipes.forEach(p => drawPipe(ctx, p.x, p.gapY));
       drawGround(ctx, s.groundOffset);
       drawBird(ctx, s.birdY, s.birdVel, s.wobble);
+      if (s.dead && s.crashFrame < 4) {
+        ctx.fillStyle = `rgba(255,244,176,${0.3 - s.crashFrame * 0.06})`;
+        ctx.fillRect(0, 0, W, H);
+      }
       if (!s.dead) drawScoreOnCanvas(ctx, s.score);
 
+      if (s.dead && s.crashFrame >= CRASH_FRAMES) {
+        setGameStatus('dead');
+        return;
+      }
       animRef.current = requestAnimationFrame(loop);
     };
 
     animRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animRef.current);
-  }, [gameStatus, userId, playerName]);
+  }, [bestScore, gameStatus, userId, playerName]);
 
   useEffect(() => () => {
     cancelAnimationFrame(animRef.current);
@@ -314,6 +339,9 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
   return (
     <Box sx={{
       position: 'fixed', inset: 0, zIndex: 9999,
+      boxSizing: 'border-box',
+      pt: 'max(8px, env(safe-area-inset-top))',
+      pb: 'max(8px, env(safe-area-inset-bottom))',
       background: 'linear-gradient(160deg, #080c12 0%, #0a1520 100%)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden',
@@ -324,7 +352,7 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
         background: 'radial-gradient(circle, #4CC9F010, transparent 70%)', pointerEvents: 'none' }} />
 
       {/* Header */}
-      <Box sx={{ width: W, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.2, px: 0.5 }}>
+      <Box sx={{ width: GAME_SURFACE_WIDTH, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.2, px: 0.5 }}>
         <Button startIcon={<ArrowBackIcon />} onClick={onExit} size="small"
           sx={{ color: '#484f58', fontSize: '0.72rem', fontWeight: 700, minWidth: 0, px: 1, borderRadius: '10px',
             '&:hover': { color: accentColor, bgcolor: 'rgba(6,214,160,0.08)' } }}>
@@ -352,7 +380,7 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
       </Box>
 
       {/* Canvas */}
-      <Box sx={{ position: 'relative', borderRadius: '16px', boxShadow: '0 0 60px rgba(6,214,160,0.07)' }}>
+      <Box sx={{ width: GAME_SURFACE_WIDTH, position: 'relative', borderRadius: '16px', boxShadow: '0 0 60px rgba(6,214,160,0.12)' }}>
         <Box sx={{
           position: 'absolute', top: -2, left: 0, right: 0, height: 3, zIndex: 1,
           background: 'linear-gradient(90deg, #06D6A0, #4CC9F0, #FFD166)',
@@ -363,11 +391,15 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
           ref={canvasRef}
           width={W}
           height={H}
-          style={{ borderRadius: 16, border: '1px solid rgba(6,214,160,0.15)', display: 'block', cursor: 'pointer' }}
+          style={{
+            width: '100%', height: 'auto', aspectRatio: '3 / 5',
+            borderRadius: 16, border: '1px solid rgba(6,214,160,0.2)', display: 'block',
+            cursor: 'pointer', touchAction: 'manipulation',
+          }}
           onPointerDown={(e) => {
             e.preventDefault();
             if (gameStatus === 'playing') flap();
-            else start();
+            else if (gameStatus === 'idle' || gameStatus === 'dead') start();
           }}
         />
 
@@ -427,7 +459,7 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
             <Typography sx={{ fontWeight: 900, fontSize: '1.6rem', color: '#EF476F', mb: 1 }}>
               You Hit a Pipe!
             </Typography>
-            {score >= bestScore && score > 0 && (
+            {isNewBest && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 1,
                 bgcolor: 'rgba(255,209,102,0.1)', px: 1.5, py: 0.4, borderRadius: '10px',
                 border: '1px solid rgba(255,209,102,0.25)' }}>
@@ -456,14 +488,16 @@ export function FlappyBirdGame({ onExit, userId, playerName }) {
         <Box
           onPointerDown={(e) => { e.preventDefault(); flap(); }}
           sx={{
-            width: W, mt: 1.5, height: 52,
+            width: GAME_SURFACE_WIDTH, mt: 1.5, height: 52,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             borderRadius: '14px', fontSize: '1rem', fontWeight: 800,
             color: accentColor,
             background: 'rgba(6,214,160,0.06)',
             border: '1px solid rgba(6,214,160,0.22)',
             cursor: 'pointer', userSelect: 'none',
-            transition: 'all 0.1s',
+            touchAction: 'manipulation',
+            boxShadow: '0 4px 20px rgba(6,214,160,0.08)',
+            transition: 'all 0.16s ease',
             '&:active': { background: 'rgba(6,214,160,0.18)', transform: 'scale(0.97)' },
           }}
         >

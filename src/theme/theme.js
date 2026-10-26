@@ -27,10 +27,16 @@ export const theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
-        body: { background: '#0d1117', scrollbarWidth: 'thin', scrollbarColor: '#30363d #0d1117' },
+        body: {
+          background: '#0d1117',
+          minHeight: '100dvh',
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#30363d #0d1117',
+        },
         '::-webkit-scrollbar': { width: '6px' },
         '::-webkit-scrollbar-track': { background: '#0d1117' },
         '::-webkit-scrollbar-thumb': { background: '#30363d', borderRadius: '4px' },
+        'button, [role="button"], a': { touchAction: 'manipulation' },
       },
     },
     MuiAppBar:    { styleOverrides: { root: { background: '#161b22', borderBottom: '1px solid rgba(255,255,255,0.08)', boxShadow: 'none' } } },
