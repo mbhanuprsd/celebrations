@@ -9,6 +9,7 @@
     "@mui/material": "^5.15.0",
     "firebase": "^10.7.0",
     "framer-motion": "^10.18.0",
+    "livekit-client": "^2.15.6",
     "nanoid": "^3.3.7",
     "react": "^18.2.0",
     "react-color": "^2.19.3",

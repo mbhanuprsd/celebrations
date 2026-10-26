@@ -20,6 +20,8 @@ ui-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+functions/.env.*
+!functions/.env.example
 
 # Debug logs
 npm-debug.log*

@@ -14,6 +14,7 @@ import { UnoGame } from './games/uno/UnoGame';
 import { MiniGolfGame } from './games/minigolf/MiniGolfGame';
 import { QuizGame } from './games/quiz/QuizGame';
 import { BoggleGame } from './games/boggle/BoggleGame';
+import { GameVoiceChat } from './components/GameVoiceChat';
 import { Box, CircularProgress, Typography } from '@mui/material';
 
 const GAME_COMPONENTS = {
@@ -84,7 +85,10 @@ function AppContent() {
         {screen === 'game' && (
           <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} style={{ height: '100dvh' }}>
             {isGameStateReady() ? (
-              <GameComp />
+              <>
+                <GameComp />
+                {room.status === 'playing' && <GameVoiceChat key={roomId} roomId={roomId} />}
+              </>
             ) : (
               <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#080c12', color: 'white' }}>
                 <CircularProgress sx={{ color: '#4CC9F0', mb: 2 }} />
