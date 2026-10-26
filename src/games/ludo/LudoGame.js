@@ -262,6 +262,7 @@ export function LudoGame() {
     const rankings = ls.rankings || (ls.winnerUid ? [ls.winnerUid] : []);
     const allUids    = Object.keys(r.players || {});
     const humanUids  = allUids.filter(uid => !r.players[uid]?.isBot);
+    const botsPlayed = (ls.playerOrder || allUids).filter(uid => r.players?.[uid]?.isBot).length;
     const myRankIdx  = rankings.indexOf(userId);
     const myRank     = myRankIdx >= 0 ? myRankIdx + 1 : humanUids.length;
     const winnerPlayer = r.players?.[ls.winnerUid];
@@ -269,11 +270,12 @@ export function LudoGame() {
     const unrankedHumans = humanUids.filter(uid => !humanRankings.includes(uid));
     const orderedUids    = [...humanRankings, ...unrankedHumans];
 
-    saveGameHistory(userId, {
+    void saveGameHistory(userId, {
       gameType: 'ludo',
       roomId: r.id,
       myRank,
       totalPlayers: humanUids.length,
+      botsPlayed,
       winnerName: winnerPlayer?.name || '',
       rankedPlayers: orderedUids.map((uid, i) => ({
         name: r.players?.[uid]?.name || uid,
@@ -281,7 +283,7 @@ export function LudoGame() {
         rank: i + 1,
         isMe: uid === userId,
       })),
-    });
+    }).catch(error => console.error('Could not save Ludo game history:', error));
   }, [ls?.winner, ls?.rankings, ls?.winnerUid, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRoll = useCallback(async () => {

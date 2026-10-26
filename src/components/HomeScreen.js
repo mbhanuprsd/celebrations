@@ -1197,7 +1197,7 @@ function GlobalChatPanel({ userId, playerName }) {
 
 // ─── Profile Panel ────────────────────────────────────────────────────────────
 
-function PastGamesSection({ games, loading, isAnonymous }) {
+function PastGamesSection({ games, loading, error, onRetry, isAnonymous }) {
   const [expanded, setExpanded] = useState(false);
   const [openId, setOpenId] = useState(null);
 
@@ -1211,6 +1211,16 @@ function PastGamesSection({ games, loading, isAnonymous }) {
       </Box>
       {[0, 1, 2].map(i => <Skeleton key={i} variant="rounded" height={72} sx={{ mb: 0.9, borderRadius: '16px', bgcolor: 'rgba(255,255,255,0.04)' }} />)}
     </Box>
+  );
+
+  if (error) return (
+    <Alert
+      severity="error"
+      action={<Button color="inherit" size="small" onClick={onRetry}>Retry</Button>}
+      sx={{ mb: 2, borderRadius: '14px' }}
+    >
+      Could not load game history: {error}
+    </Alert>
   );
 
   if (games.length === 0) return (
@@ -1247,6 +1257,12 @@ function PastGamesSection({ games, loading, isAnonymous }) {
           const isWin = myRank === 1;
           const isOpen = openId === game.id;
           const rankedPlayers = game.rankedPlayers || [];
+          const opponents = (Array.isArray(game.opponents) && game.opponents.length
+            ? game.opponents
+            : rankedPlayers.filter(player => !player.isMe).map(player => player.name))
+            .map(player => typeof player === 'string' ? player : player?.name)
+            .filter(Boolean);
+          const hasBotCount = Number.isInteger(game.botsPlayed);
           const hasScores = rankedPlayers.some(p => p.score != null && p.score > 0);
           const winnerName = game.winnerName || game.winner || '';
           return (
@@ -1306,6 +1322,36 @@ function PastGamesSection({ games, loading, isAnonymous }) {
                 <Collapse in={isOpen}>
                   <Box sx={{ px: 1.6, pb: 1.4, pt: 0.2 }}>
                     <Box sx={{ height: '1px', bgcolor: 'rgba(255,255,255,0.06)', mb: 1.2 }} />
+                    <Typography sx={{ fontSize: '0.62rem', fontWeight: 900, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.07em', mb: 0.8 }}>
+                      Played with
+                    </Typography>
+                    {opponents.length > 0 || (hasBotCount && game.botsPlayed > 0) ? (
+                      <Box display="flex" gap={0.6} flexWrap="wrap" mb={1.4}>
+                        {opponents.map((name, index) => (
+                          <Chip
+                            key={`${name}-${index}`}
+                            avatar={<Avatar sx={{ bgcolor: nameColor(name), color: '#fff !important', fontSize: '0.58rem !important', fontWeight: 900 }}>{name.slice(0, 2).toUpperCase()}</Avatar>}
+                            label={name}
+                            size="small"
+                            sx={{ color: '#c9d1d9', bgcolor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+                          />
+                        ))}
+                        {hasBotCount && game.botsPlayed > 0 && (
+                          <Chip
+                            key="bots-played"
+                            label={`${game.botsPlayed} bot${game.botsPlayed === 1 ? '' : 's'} played`}
+                            size="small"
+                            sx={{ color: '#c4b5fd', bgcolor: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)' }}
+                          />
+                        )}
+                      </Box>
+                    ) : (
+                      <Typography sx={{ fontSize: '0.72rem', color: '#484f58', mb: 1.4 }}>
+                        {hasBotCount
+                          ? 'No bots played in this game.'
+                          : 'Opponent and bot details weren’t saved for this game.'}
+                      </Typography>
+                    )}
                     <Typography sx={{ fontSize: '0.62rem', fontWeight: 900, color: '#484f58', textTransform: 'uppercase', letterSpacing: '0.07em', mb: 0.8 }}>Final Standings</Typography>
                     {rankedPlayers.map((p, j) => {
                       const rowColor = nameColor(p.name);
@@ -1344,27 +1390,42 @@ function ProfilePanel({ state, updateUsername, logout }) {
   const [nameSaving, setNameSaving] = useState(false);
   const [games, setGames] = useState([]);
   const [gamesLoading, setGamesLoading] = useState(true);
+  const [gamesError, setGamesError] = useState('');
+  const [historyRequest, setHistoryRequest] = useState(0);
   const [stats, setStats] = useState({ played: 0, wins: 0, top3: 0 });
 
-  // Single fetch — shared between stats and PastGamesSection
   useEffect(() => {
-    if (!userId || isAnonymous) { setGamesLoading(false); return; }
-    getUserGameHistory(userId, 50).then(data => {
-      setGames(data);
-      // Filter out games where bots inflated the count (totalPlayers includes bots)
-      // A "real" game needs at least 2 human players — we detect this by checking
-      // if rankedPlayers has any non-bot entries beyond yourself (bots have no isBot field
-      // saved in rankedPlayers, but we can use totalPlayers >= 2 as a proxy; bot-only
-      // rooms would still show rank 1 of 1, so we guard on totalPlayers >= 2).
-      const realGames = data.filter(g => (g.totalPlayers || 0) >= 2);
-      setStats({
-        played: realGames.length,
-        wins:   realGames.filter(g => (g.myRank || g.rank) === 1).length,
-        top3:   realGames.filter(g => (g.myRank || g.rank) <= 3 && (g.myRank || g.rank) > 0).length,
-      });
+    let active = true;
+    setGames([]);
+    setStats({ played: 0, wins: 0, top3: 0 });
+    setGamesError('');
+    if (!userId || isAnonymous) {
       setGamesLoading(false);
+      return () => { active = false; };
+    }
+
+    setGamesLoading(true);
+    getUserGameHistory(userId).then(data => {
+      if (!active) return;
+      setGames(data);
+      setStats({
+        played: data.length,
+        wins: data.filter(game => (game.myRank || game.rank) === 1).length,
+        top3: data.filter(game => {
+          const rank = game.myRank || game.rank;
+          return rank > 0 && rank <= 3;
+        }).length,
+      });
+    }).catch(error => {
+      if (!active) return;
+      console.error('Could not load game history:', error);
+      setGamesError(error.message || 'Could not load your game history.');
+    }).finally(() => {
+      if (active) setGamesLoading(false);
     });
-  }, [userId, isAnonymous]);
+
+    return () => { active = false; };
+  }, [userId, isAnonymous, historyRequest]);
 
   const startEdit = () => { setNameInput(playerName || ''); setNameError(''); setEditingName(true); };
   const cancelEdit = () => { setEditingName(false); setNameError(''); };
@@ -1461,7 +1522,13 @@ function ProfilePanel({ state, updateUsername, logout }) {
         </Button>
       </Box>
 
-      <PastGamesSection games={games} loading={gamesLoading} isAnonymous={isAnonymous} />
+      <PastGamesSection
+        games={games}
+        loading={gamesLoading}
+        error={gamesError}
+        onRetry={() => setHistoryRequest(request => request + 1)}
+        isAnonymous={isAnonymous}
+      />
     </Box>
   );
 }

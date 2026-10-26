@@ -6,6 +6,7 @@ import ReplayIcon from '@mui/icons-material/Replay';
 import { useGameContext } from '../../context/GameContext';
 import { useRoom } from '../../hooks/useRoom';
 import { useGameGuard } from '../../hooks/useGameSession';
+import { saveGameHistory } from '../../firebase/services';
 import { LeaveConfirmModal, OfflineBanner } from '../../components/GameSharedUI';
 import { useBotTurns } from '../bots/useBotTurns';
 import { loadBoggleDictionary, submitBoggleWord, finishBoggleRound, initBoggleGame } from './boggleFirebaseService';
@@ -50,12 +51,46 @@ export function BoggleGame() {
   const boardBoundsRef = useRef(null);
   const lastPointerPositionRef = useRef(null);
   const feedbackTimerRef = useRef(null);
+  const historySavedForRef = useRef(null);
 
   useEffect(() => {
     notifyRef.current = notify;
   }, [notify]);
 
   useEffect(() => () => clearTimeout(feedbackTimerRef.current), []);
+
+  useEffect(() => {
+    if (game?.phase === 'playing') {
+      historySavedForRef.current = null;
+      return;
+    }
+    if (game?.phase !== 'finished' || !userId || !room) return;
+    const gameKey = game.startedAt || game.finishedAt;
+    if (!gameKey || historySavedForRef.current === gameKey) return;
+
+    const humanPlayers = (game.playerOrder || []).filter(uid => !room.players?.[uid]?.isBot);
+    if (!humanPlayers.includes(userId)) return;
+
+    historySavedForRef.current = gameKey;
+    const scores = game.scores || {};
+    const rankedUids = [...humanPlayers].sort((a, b) => (scores[b] || 0) - (scores[a] || 0));
+    const botsPlayed = (game.playerOrder || []).filter(uid => room.players?.[uid]?.isBot).length;
+    const winnerUid = rankedUids[0];
+    void saveGameHistory(userId, {
+      gameType: 'boggle',
+      roomId,
+      myRank: rankedUids.indexOf(userId) + 1,
+      totalPlayers: humanPlayers.length,
+      botsPlayed,
+      winnerName: room.players?.[winnerUid]?.name || '',
+      rankedPlayers: rankedUids.map((uid, index) => ({
+        name: room.players?.[uid]?.name || uid,
+        score: scores[uid] || 0,
+        rank: index + 1,
+        isMe: uid === userId,
+      })),
+    }).catch(error => console.error('Could not save Boggle game history:', error));
+  }, [game, room, roomId, userId]);
 
   useEffect(() => {
     let active = true;

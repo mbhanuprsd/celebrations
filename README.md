@@ -52,6 +52,8 @@ In the [Firebase Console](https://console.firebase.google.com/):
 5. Register a **Web app** in Project settings and copy its Firebase configuration values.
 6. Enable billing for the project. Cloud Functions and Secret Manager require billing to deploy and store LiveKit credentials. Review Firebase and Google Cloud pricing for your expected usage.
 
+Game history in **My Alter Ego** is saved only for Google-authenticated users. Anonymous sign-in is supported for playing, but anonymous sessions do not have persistent game history.
+
 Create `.env.local` in the repository root using your web-app values:
 
 ```dotenv

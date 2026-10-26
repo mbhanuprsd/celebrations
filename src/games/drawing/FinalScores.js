@@ -30,13 +30,15 @@ export function FinalScores() {
     if (!userId || !room || savedRef.current) return;
     savedRef.current = true;
     const humanPlayers = players.filter(p => !p.isBot);
+    const botsPlayed = players.filter(p => p.isBot).length;
     const myRank = humanPlayers.findIndex(p => p.id === userId) + 1;
     if (!myRank) return; // user not in the list (left early)
-    saveGameHistory(userId, {
+    void saveGameHistory(userId, {
       gameType: 'drawing',
       roomId: room.id,
       myRank,
       totalPlayers: humanPlayers.length,
+      botsPlayed,
       winnerName: humanPlayers[0]?.name || '',
       rankedPlayers: humanPlayers.map((p, i) => ({
         name: p.name,
@@ -44,7 +46,7 @@ export function FinalScores() {
         rank: i + 1,
         isMe: p.id === userId,
       })),
-    });
+    }).catch(error => console.error('Could not save Draw & Guess game history:', error));
   }, [room?.id, userId]); // eslint-disable-line
 
   return (

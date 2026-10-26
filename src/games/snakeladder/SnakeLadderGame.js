@@ -225,16 +225,18 @@ export function SnakeLadderGame() {
     if (!winner || !userId || !room || slSavedRef.current) return;
     slSavedRef.current = true;
     const humanOrder = playerOrder.filter(uid => !room.players?.[uid]?.isBot);
+    const botsPlayed = playerOrder.filter(uid => room.players?.[uid]?.isBot).length;
     const myRankIdx  = rankings.indexOf(userId);
     const myRank     = myRankIdx >= 0 ? myRankIdx + 1 : humanOrder.length;
     const winnerPlayer = room.players?.[winner];
     const unfinished = humanOrder.filter(uid => !rankings.includes(uid));
     const orderedUids = [...rankings.filter(uid => !room.players?.[uid]?.isBot), ...unfinished];
-    saveGameHistory(userId, {
+    void saveGameHistory(userId, {
       gameType: 'snakeladder',
       roomId: room.id,
       myRank,
       totalPlayers: humanOrder.length,
+      botsPlayed,
       winnerName: winnerPlayer?.name || '',
       rankedPlayers: orderedUids.map((uid, i) => ({
         name: room.players?.[uid]?.name || uid,
@@ -242,7 +244,7 @@ export function SnakeLadderGame() {
         rank: i + 1,
         isMe: uid === userId,
       })),
-    });
+    }).catch(error => console.error('Could not save Snake & Ladder game history:', error));
   }, [winner]); // eslint-disable-line
 
   // All hooks are now at the top level (ESLint happy)

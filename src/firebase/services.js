@@ -543,33 +543,31 @@ export const saveGameHistory = async (uid, gameData) => {
   if (!uid) return;
   // Anonymous users don't get game history saved (Firestore rules also block it)
   if (auth.currentUser?.isAnonymous) return;
-  try {
-    await addDoc(collection(db, 'users', uid, 'gameHistory'), {
-      ...gameData,
-      playedAt: serverTimestamp(),
-    });
-  } catch (e) {
-    console.warn('saveGameHistory failed:', e);
+  if (!auth.currentUser || auth.currentUser.uid !== uid) {
+    throw new Error('Could not save game history: the signed-in user changed.');
   }
+  const opponents = gameData.opponents || (gameData.rankedPlayers || [])
+    .filter(player => !player.isMe)
+    .map(player => player.name)
+    .filter(Boolean);
+  await addDoc(collection(db, 'users', uid, 'gameHistory'), {
+    ...gameData,
+    opponents,
+    playedAt: serverTimestamp(),
+  });
 };
 
 /**
- * Fetch the last N completed games for a user.
+ * Fetch a user's completed games, newest first.
  */
-export const getUserGameHistory = async (uid, limitCount = 15) => {
+export const getUserGameHistory = async (uid) => {
   if (!uid) return [];
-  try {
-    const q = query(
-      collection(db, 'users', uid, 'gameHistory'),
-      orderBy('playedAt', 'desc'),
-      limit(limitCount)
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch (e) {
-    console.warn('getUserGameHistory failed:', e);
-    return [];
-  }
+  const q = query(
+    collection(db, 'users', uid, 'gameHistory'),
+    orderBy('playedAt', 'desc')
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
 // ─── Global Chat ────────────────────────────────────────────────────────────

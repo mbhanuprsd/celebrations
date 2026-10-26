@@ -237,17 +237,19 @@ export function UnoGame() {
     const rankings    = u?.rankings || [];
     const allPlayers  = u?.playerOrder || [];
     const humanPlayers = allPlayers.filter(uid => !room.players?.[uid]?.isBot);
+    const botsPlayed = allPlayers.filter(uid => room.players?.[uid]?.isBot).length;
     const humanRankings = rankings.filter(uid => !room.players?.[uid]?.isBot);
     const myRankIdx   = humanRankings.indexOf(userId);
     const myFinalRank = myRankIdx >= 0 ? myRankIdx + 1 : humanPlayers.length;
     const winnerPlayer = room.players?.[u?.winner];
     const unfinished  = humanPlayers.filter(uid => !humanRankings.includes(uid));
     const orderedUids = [...humanRankings, ...unfinished];
-    saveGameHistory(userId, {
+    void saveGameHistory(userId, {
       gameType: 'uno',
       roomId: room.id,
       myRank: myFinalRank,
       totalPlayers: humanPlayers.length,
+      botsPlayed,
       winnerName: winnerPlayer?.name || '',
       rankedPlayers: orderedUids.map((uid, i) => ({
         name: room.players?.[uid]?.name || uid,
@@ -255,7 +257,7 @@ export function UnoGame() {
         rank: i + 1,
         isMe: uid === userId,
       })),
-    });
+    }).catch(error => console.error('Could not save UNO game history:', error));
   }, [gameOver]); // eslint-disable-line
 
   const playableIds  = useMemo(() => {

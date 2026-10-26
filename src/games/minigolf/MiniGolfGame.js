@@ -449,17 +449,19 @@ export function MiniGolfGame() {
     if (!u?.winner || !userId || !room || mgSavedRef.current) return;
     mgSavedRef.current = true;
     const humanPlayers = (u.playerOrder || []).filter(uid => !room.players?.[uid]?.isBot);
+    const botsPlayed = (u.playerOrder || []).filter(uid => room.players?.[uid]?.isBot).length;
     const scores       = u.scores || {};
     const sorted       = [...humanPlayers].sort(
       (a, b) => (scores[a] || []).reduce((s, v) => s + v, 0) - (scores[b] || []).reduce((s, v) => s + v, 0)
     );
     const myRank    = sorted.indexOf(userId) + 1 || humanPlayers.length;
     const winnerUid = sorted[0];
-    saveGameHistory(userId, {
+    void saveGameHistory(userId, {
       gameType: 'minigolf',
       roomId,
       myRank,
       totalPlayers: humanPlayers.length,
+      botsPlayed,
       winnerName: room.players?.[winnerUid]?.name || '',
       rankedPlayers: sorted.map((uid, i) => ({
         name: room.players?.[uid]?.name || uid,
@@ -467,7 +469,7 @@ export function MiniGolfGame() {
         rank: i + 1,
         isMe: uid === userId,
       })),
-    });
+    }).catch(error => console.error('Could not save Mini Golf game history:', error));
   }, [u?.winner]); // eslint-disable-line
 
   // ── Cleanup RAF on unmount ────────────────────────────────────────────

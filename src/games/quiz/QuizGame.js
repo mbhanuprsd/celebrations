@@ -290,7 +290,7 @@ export function QuizGame() {
         }
       }
     }
-  }, [isHost, roomId]);
+  }, [isHost, notify, roomId]);
 
   // Reset revealRef only when the question index changes
   useEffect(() => {
@@ -332,14 +332,16 @@ export function QuizGame() {
     if (!q || q.phase !== 'finished' || !userId || !room || quizSavedRef.current) return;
     quizSavedRef.current = true;
     const humanPlayers = (q.playerOrder || []).filter(uid => !room.players?.[uid]?.isBot);
+    const botsPlayed = (q.playerOrder || []).filter(uid => room.players?.[uid]?.isBot).length;
     const sorted       = [...humanPlayers].sort((a, b) => (q.scores[b] || 0) - (q.scores[a] || 0));
     const myRank       = sorted.indexOf(userId) + 1 || humanPlayers.length;
     const winnerUid    = sorted[0];
-    saveGameHistory(userId, {
+    void saveGameHistory(userId, {
       gameType: 'quiz',
       roomId,
       myRank,
       totalPlayers: humanPlayers.length,
+      botsPlayed,
       winnerName: room.players?.[winnerUid]?.name || '',
       rankedPlayers: sorted.map((uid, i) => ({
         name: room.players?.[uid]?.name || uid,
@@ -347,7 +349,7 @@ export function QuizGame() {
         rank: i + 1,
         isMe: uid === userId,
       })),
-    });
+    }).catch(error => console.error('Could not save Quiz game history:', error));
   }, [q?.phase]); // eslint-disable-line
   // FIX: use qRef so this callback is not recreated on every snapshot
   const handleAnswer = useCallback(async (idx) => {

@@ -192,23 +192,42 @@ export function useBotTurns({ room, roomId, isHost, gameType }) {
       if (!currentUid || !isBot(currentUid)) return;
 
       handle(`uno-${u.turnCount}-${currentUid}`, async () => {
-        await delay(rand(900, 1800));
-        const freshU = room.unoState;
-        if (!freshU || freshU.winner) return;
-        const freshUid = freshU.playerOrder?.[freshU.currentIndex];
-        if (freshUid !== currentUid) return;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await delay(attempt === 0 ? rand(250, 500) : rand(300, 500));
+          const latestRoom = roomRef.current;
+          const freshU = latestRoom?.unoState;
+          if (
+            latestRoom?.status !== 'playing' ||
+            !freshU ||
+            freshU.winner ||
+            !latestRoom.players?.[currentUid]?.isBot ||
+            freshU.playerOrder?.[freshU.currentIndex] !== currentUid
+          ) return;
 
-        const hand = freshU.hands?.[currentUid] || [];
-        const playable = hand.filter(c =>
-          canPlayCard(c, freshU.topCard, freshU.activeColor, freshU.pendingDraw, freshU.pendingDrawType));
+          const hand = freshU.hands?.[currentUid] || [];
+          const playable = hand.filter(c =>
+            canPlayCard(c, freshU.topCard, freshU.activeColor, freshU.pendingDraw, freshU.pendingDrawType));
 
-        if (playable.length > 0) {
-          const card = pickBestUnoCard(playable, freshU.activeColor);
-          const isWild = card.type === 'wild' || card.type === 'wild4';
-          const chosenColor = isWild ? pickBestUnoColor(hand) : null;
-          await playUnoCard(roomId, currentUid, card.id, chosenColor);
-        } else {
-          await drawUnoCard(roomId, currentUid);
+          let result;
+          if (playable.length > 0) {
+            const card = pickBestUnoCard(playable, freshU.activeColor);
+            const isWild = card.type === 'wild' || card.type === 'wild4';
+            const chosenColor = isWild ? pickBestUnoColor(hand) : null;
+            result = await playUnoCard(roomId, currentUid, card.id, chosenColor);
+          } else {
+            result = await drawUnoCard(roomId, currentUid);
+          }
+
+          if (result?.ok) return;
+
+          const currentU = roomRef.current?.unoState;
+          if (
+            currentU?.winner ||
+            currentU?.playerOrder?.[currentU.currentIndex] !== currentUid
+          ) return;
+          if (attempt === 2) {
+            throw new Error(`UNO bot action failed: ${result?.error || 'Unknown response'}`);
+          }
         }
       });
     }
