@@ -85,10 +85,7 @@ function AppContent() {
         {screen === 'game' && (
           <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} style={{ height: '100dvh' }}>
             {isGameStateReady() ? (
-              <>
-                <GameComp />
-                {room.status === 'playing' && <GameVoiceChat key={roomId} roomId={roomId} />}
-              </>
+              <GameComp />
             ) : (
               <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#080c12', color: 'white' }}>
                 <CircularProgress sx={{ color: '#4CC9F0', mb: 2 }} />
@@ -98,6 +95,8 @@ function AppContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {isLoggedIn && roomId && room && <GameVoiceChat key={roomId} roomId={roomId} />}
 
       {/* Global escape hatch — floats over any game screen */}
     </>
