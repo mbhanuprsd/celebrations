@@ -1,4 +1,4 @@
-import { calculateBoggleScores, createBoggleBoard, extendBogglePath, findBoggleWords, findLongestBoggleWords, getBoggleCellAtPoint, getBoggleCellsAlongSegment, getBogglePathSegment, getNextBoggleBotActionAt, getWordScore, isWordOnBoard, normalizeBoggleRoundSeconds, parseBoggleDictionary } from './boggleConstants';
+import { calculateBoggleScores, createBoggleBoard, extendBogglePath, findBoggleWordPath, findBoggleWords, findLongestBoggleWords, getBoggleCellAtPoint, getBoggleCellsAlongSegment, getBogglePathSegment, getNextBoggleBotActionAt, getWordScore, isWordOnBoard, normalizeBoggleRoundSeconds, parseBoggleDictionary } from './boggleConstants';
 
 describe('Boggle helpers', () => {
   test('normalizes round duration to 30-second steps between 30 and 120 seconds', () => {
@@ -34,6 +34,19 @@ describe('Boggle helpers', () => {
     expect(isWordOnBoard('cr', board)).toBe(true);
     expect(isWordOnBoard('caa', board)).toBe(false);
     expect(isWordOnBoard('ca1', board)).toBe(false);
+  });
+
+  test('returns a valid tile path for the word currently being scored', () => {
+    const board = [
+      'c', 'a', 't', 'x',
+      'x', 'r', 'x', 'x',
+      'x', 'x', 'x', 'x',
+      'x', 'x', 'x', 'x',
+    ];
+    expect(findBoggleWordPath('cat', board)).toEqual([0, 1, 2]);
+    expect(findBoggleWordPath('car', board)).toEqual([0, 1, 5]);
+    expect(findBoggleWordPath('caa', board)).toEqual([]);
+    expect(findBoggleWordPath('ca1', board)).toEqual([]);
   });
 
   test('finds every longest dictionary word traceable on the board', () => {

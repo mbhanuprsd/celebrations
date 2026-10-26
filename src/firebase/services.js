@@ -3,7 +3,7 @@
 
 import {
   doc, collection, setDoc, updateDoc, onSnapshot, deleteDoc,
-  serverTimestamp, deleteField, getDoc, query, where, limit,
+  serverTimestamp, deleteField, getDoc, getDocFromServer, query, where, limit,
   increment, orderBy, getDocs, addDoc, arrayUnion
 } from 'firebase/firestore';
 import {
@@ -377,6 +377,11 @@ export const listenRoom = (roomId, callback) => {
     if (snap.exists()) callback(snap.data());
     else callback(null);
   });
+};
+
+export const refreshRoomFromServer = async (roomId) => {
+  const snap = await getDocFromServer(doc(db, 'rooms', roomId));
+  return snap.exists() ? snap.data() : null;
 };
 
 // ─── Word Bank ─────────────────────────────────────────────────────────────

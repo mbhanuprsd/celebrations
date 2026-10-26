@@ -21,7 +21,7 @@ export function loadBoggleDictionary() {
 }
 
 export async function initBoggleGame(roomId, playerOrder, minWordLength = 3, roundDuration = BOGGLE_ROUND_SECONDS) {
-  const startedAt = Date.now();
+  const countdownEndsAt = Date.now() + 3000;
   const minLength = Math.min(6, Math.max(3, Number(minWordLength) || 3));
   const durationSeconds = normalizeBoggleRoundSeconds(roundDuration);
   const scores = Object.fromEntries(playerOrder.map(uid => [uid, 0]));
@@ -37,14 +37,33 @@ export async function initBoggleGame(roomId, playerOrder, minWordLength = 3, rou
         board: createBoggleBoard(),
         minWordLength: minLength,
         durationSeconds,
-        startedAt,
-        endsAt: startedAt + durationSeconds * 1000,
-        phase: 'playing',
+        countdownEndsAt,
+        phase: 'countdown',
         submissions: {},
         scores,
       },
     });
   });
+}
+
+export async function startBoggleRound(roomId) {
+  let started = false;
+  await runTransaction(db, async transaction => {
+    started = false;
+    const roomRef = doc(db, 'rooms', roomId);
+    const snapshot = await transaction.get(roomRef);
+    const state = snapshot.data()?.boggleState;
+    if (!state || state.phase !== 'countdown' || Date.now() < state.countdownEndsAt) return;
+
+    const startedAt = state.countdownEndsAt;
+    transaction.update(roomRef, {
+      'boggleState.phase': 'playing',
+      'boggleState.startedAt': startedAt,
+      'boggleState.endsAt': startedAt + state.durationSeconds * 1000,
+    });
+    started = true;
+  });
+  return started;
 }
 
 export async function submitBoggleWord(roomId, userId, rawWord, dictionary) {

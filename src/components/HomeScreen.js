@@ -1254,7 +1254,7 @@ function PastGamesSection({ games, loading, error, onRetry, isAnonymous }) {
           const grad = GAME_GRADIENTS[game.gameType] || GAME_GRADIENTS.drawing;
           const meta = GAME_META[game.gameType] || {};
           const myRank = game.myRank || game.rank || 0;
-          const isWin = myRank === 1;
+          const isWin = typeof game.isWinner === 'boolean' ? game.isWinner : myRank === 1;
           const isOpen = openId === game.id;
           const rankedPlayers = game.rankedPlayers || [];
           const opponents = (Array.isArray(game.opponents) && game.opponents.length

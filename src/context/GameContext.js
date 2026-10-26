@@ -3,7 +3,7 @@ import React, { createContext, useContext, useReducer, useEffect, useRef } from 
 import {
   signInWithGoogle, signInAnonymouslyUser, signOutUser, listenRoom, listenChat,
   setUserOnline, removeUserOnline, checkNameAvailableForUid, joinRoom,
-  updatePlayerNameInRoom, loadWordBank
+  updatePlayerNameInRoom, loadWordBank, refreshRoomFromServer
 } from '../firebase/services';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -89,6 +89,9 @@ async function resolveUniqueName(uid, baseName) {
 
 export function GameProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const isGameActive = Boolean(
+    state.roomId && state.room && state.room.status !== 'waiting' && state.room.status !== 'finished'
+  );
   const unsubRoomRef = useRef(null);
   const unsubChatRef = useRef(null);
   // FIX: store the host-leave timer so it can be cancelled on cleanup
@@ -187,6 +190,95 @@ export function GameProvider({ children }) {
   }, [state.roomId, state.userId]);
 
   const setRoomId  = (id) => dispatch({ type: 'SET_ROOM_ID', roomId: id });
+
+  useEffect(() => {
+    const roomId = state.roomId;
+    if (!roomId) return undefined;
+
+    let active = true;
+    let refreshInFlight = false;
+    let lastRefreshAt = 0;
+    const refreshOnResume = async () => {
+      if (!active || document.visibilityState === 'hidden' || !navigator.onLine ||
+          refreshInFlight || Date.now() - lastRefreshAt < 1000) return;
+      refreshInFlight = true;
+      lastRefreshAt = Date.now();
+      try {
+        const room = await refreshRoomFromServer(roomId);
+        if (active && room) dispatch({ type: 'SET_ROOM', room });
+      } catch (error) {
+        console.error('Could not refresh the room after returning to the app:', error);
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshOnResume();
+    };
+
+    window.addEventListener('focus', refreshOnResume);
+    window.addEventListener('pageshow', refreshOnResume);
+    window.addEventListener('online', refreshOnResume);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refreshOnResume);
+      window.removeEventListener('pageshow', refreshOnResume);
+      window.removeEventListener('online', refreshOnResume);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [state.roomId]);
+
+  useEffect(() => {
+    if (!isGameActive || !('wakeLock' in navigator)) return undefined;
+
+    let wakeLock = null;
+    let requesting = false;
+    let cancelled = false;
+
+    const requestWakeLock = async () => {
+      if (cancelled || requesting || wakeLock || document.visibilityState !== 'visible') return;
+      requesting = true;
+      try {
+        const lock = await navigator.wakeLock.request('screen');
+        if (cancelled || document.visibilityState !== 'visible') {
+          await lock.release();
+          return;
+        }
+        wakeLock = lock;
+        lock.addEventListener('release', () => {
+          if (wakeLock === lock) wakeLock = null;
+        }, { once: true });
+      } catch (error) {
+        console.warn('Could not keep the screen awake during the game:', error);
+      } finally {
+        requesting = false;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void requestWakeLock();
+      } else if (wakeLock) {
+        const lock = wakeLock;
+        wakeLock = null;
+        void lock.release();
+      }
+    };
+
+    void requestWakeLock();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (wakeLock) {
+        const lock = wakeLock;
+        wakeLock = null;
+        void lock.release();
+      }
+    };
+  }, [isGameActive]);
+
   const leaveRoom  = () => dispatch({ type: 'LEAVE_ROOM' });
   const setLoading = (v) => dispatch({ type: 'SET_LOADING', value: v });
   const setError   = (e) => dispatch({ type: 'SET_ERROR', error: e });

@@ -211,6 +211,45 @@ export function findLongestBoggleWords(board, dictionary, minWordLength = 3) {
   return words.filter(word => word.length === longestLength);
 }
 
+export function findBoggleWordPath(word, board) {
+  if (!/^[a-z]+$/.test(word) || !Array.isArray(board) ||
+      board.length !== BOGGLE_BOARD_SIZE ** 2) return [];
+
+  const search = (letterIndex, cellIndex, usedCells, path) => {
+    if (board[cellIndex] !== word[letterIndex]) return null;
+    const nextPath = [...path, cellIndex];
+    if (letterIndex === word.length - 1) return nextPath;
+
+    const row = Math.floor(cellIndex / BOGGLE_BOARD_SIZE);
+    const column = cellIndex % BOGGLE_BOARD_SIZE;
+    for (let rowOffset = -1; rowOffset <= 1; rowOffset++) {
+      for (let columnOffset = -1; columnOffset <= 1; columnOffset++) {
+        if (rowOffset === 0 && columnOffset === 0) continue;
+        const nextRow = row + rowOffset;
+        const nextColumn = column + columnOffset;
+        if (nextRow < 0 || nextRow >= BOGGLE_BOARD_SIZE ||
+            nextColumn < 0 || nextColumn >= BOGGLE_BOARD_SIZE) continue;
+
+        const nextIndex = nextRow * BOGGLE_BOARD_SIZE + nextColumn;
+        const nextBit = 1 << nextIndex;
+        if ((usedCells & nextBit) === 0) {
+          const result = search(letterIndex + 1, nextIndex, usedCells | nextBit, nextPath);
+          if (result) return result;
+        }
+      }
+    }
+    return null;
+  };
+
+  for (let index = 0; index < board.length; index++) {
+    if (board[index] === word[0]) {
+      const path = search(0, index, 1 << index, []);
+      if (path) return path;
+    }
+  }
+  return [];
+}
+
 export function isWordOnBoard(word, board) {
   if (!/^[a-z]+$/.test(word) || !Array.isArray(board) || board.length !== 16) return false;
 
